@@ -100,7 +100,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       <div class="lsku" id="lsku"></div>
       <div class="lmeta" id="lmeta"></div>
     </div>
-    <button class="primary" id="printnow">Print</button>
+    <button class="primary" id="printnow">Open PDF</button>
     <button id="showopts">More options</button>
   </div>
 
@@ -672,6 +672,7 @@ sku,product,price,qty
     $("pairing").value = "dup";
 
     build();
+    makePdf();          // the PDF is the reliable print path
 
     document.body.classList.add("launched");
     $("launchbar").hidden = false;
@@ -680,13 +681,18 @@ sku,product,price,qty
       (hasPrice ? formatPrice(pn) : "no price") + " \u00b7 " +
       (copies * 2) + " labels";
 
-    if (q.get("autoprint") === "1") {
-      setTimeout(function () { window.print(); }, 700);
-    }
     return true;
   }
 
-  $("printnow").addEventListener("click", function () { window.print(); });
+  // Click the real anchor rather than calling window.open: a user-activated
+  // anchor with target="_blank" is never caught by a pop-up blocker. If the
+  // browser still refuses, the PDF is already embedded further down the page,
+  // so there is always a way to print.
+  $("printnow").addEventListener("click", function () {
+    if (!$("pdflink").getAttribute("href")) makePdf();
+    $("pdflink").click();
+    $("pdfbox").scrollIntoView({ block: "start" });
+  });
   $("showopts").addEventListener("click", function () {
     document.body.classList.remove("launched");
     $("launchbar").hidden = true;
