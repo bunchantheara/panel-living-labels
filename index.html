@@ -56,10 +56,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .price{font-family:var(--mono);font-weight:700;line-height:1.12;white-space:nowrap;color:#000}
   .name{font-family:var(--sans);line-height:1.12;color:#000;overflow:hidden}
 
-  /* screen-only guides */
-  .sheets .sheet{outline:1px solid var(--rule)}
-  .sheets .lab{outline:1px dashed #c2492f;outline-offset:-1px}
-  .sheets .gut{background:repeating-linear-gradient(45deg,transparent,transparent 2px,#e9ece9 2px,#e9ece9 4px)}
+  /* Screen-only guides. These MUST stay inside @media screen: the print
+     block below cannot override them, because ".sheets .lab" outranks
+     ".lab" on specificity and the dashed frames end up on the labels. */
+  @media screen{
+    .sheets .sheet{outline:1px solid var(--rule)}
+    .sheets .lab{outline:1px dashed #c2492f;outline-offset:-1px}
+    .sheets .gut{background:repeating-linear-gradient(45deg,transparent,transparent 2px,#e9ece9 2px,#e9ece9 4px)}
+  }
 
   /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
   .cal{display:block;position:relative;width:73mm;height:20mm;background:#fff;overflow:hidden}
@@ -74,10 +78,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     .app{max-width:none;padding:0;gap:0}
     .noprint{display:none !important}
     .sheets{gap:0;display:block}
-    .sheet{page-break-after:always;break-after:page;outline:none}
+    .sheet{page-break-after:always;break-after:page}
     .sheet:last-child{page-break-after:auto;break-after:auto}
-    .lab{outline:none}
-    .gut{background:none}
   }
 </style>
 </head>
