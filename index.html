@@ -231,9 +231,18 @@ sku,product,price,qty
   }
 
   // ---------- QR ----------
+  // QR's Alphanumeric mode covers digits, uppercase letters, space and
+  // - . / : $ % * + - which is every character our SKUs use. It packs ~1.6x
+  // denser than Byte, so a 15-char SKU fits QR version 1 (21 modules) instead
+  // of version 2 (25). Same physical size, noticeably bigger modules, which
+  // is what scans reliably at 203 dpi. The old zohoprintengine label encoded
+  // Alphanumeric for exactly this reason; falling back to Byte only when a
+  // SKU contains something outside that set (e.g. lowercase).
+  var ALNUM_OK = /^[0-9A-Z $%*+\-.\/:]*$/;
+
   function qrSvg(text, sizeMm, ecl) {
     var q = qrcode(0, ecl);          // 0 = smallest version that fits
-    q.addData(text);
+    q.addData(text, ALNUM_OK.test(text) ? "Alphanumeric" : "Byte");
     q.make();
     var modules = q.getModuleCount();
     // 4-module quiet zone each side is required by the spec
