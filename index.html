@@ -332,12 +332,28 @@ sku,product,price,qty
       return d;
     }
 
+    // The text column is only ~14 mm wide and .price never wraps, so a long
+    // value would be silently clipped by the printer - and a clipped price on
+    // a price tag is worse than a small one. Step the size down until it fits.
+    // The "$" costs one character, which pushes anything from $100 up over the
+    // edge at the default 10 pt.
+    var shrunk = 0;
+    Array.prototype.forEach.call(sheets.querySelectorAll(".price"), function (pr) {
+      var pt = pricePt;
+      while (pr.scrollWidth > pr.clientWidth + 0.5 && pt > 5) {
+        pt -= 0.25;
+        pr.style.fontSize = pt + "pt";
+      }
+      if (pt < pricePt) shrunk++;
+    });
+
     var sheetCount = Math.ceil(items.length / 2);
     var wasted = sheetCount * 2 - items.length;
 
     $("previewhead").hidden = false;
     $("count").textContent = made + " labels · " + sheetCount + " rows" + (wasted ? " · " + wasted + " blank" : " · none wasted");
-    $("status").textContent = "Built " + made + " labels across " + sheetCount + " rows. QR version " + biggestVersion + ", " + ecl + " correction.";
+    $("status").textContent = "Built " + made + " labels across " + sheetCount + " rows. QR version " + biggestVersion + ", " + ecl + " correction." +
+      (shrunk ? " Price shrunk to fit on " + shrunk + " of them." : "");
     $("print").disabled = false;
 
     if (warns.length) {
@@ -346,10 +362,14 @@ sku,product,price,qty
     }
   }
 
+  // Books prices this catalogue in USD, so the tag carries "$". Change CUR
+  // here if that ever stops being true - it is the only place the symbol
+  // is written.
+  var CUR = "$";
   function formatPrice(p) {
     var n = parseFloat(String(p).replace(/[^0-9.\-]/g, ""));
     if (isNaN(n)) return String(p);
-    return n.toFixed(2);
+    return CUR + n.toFixed(2);
   }
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -400,7 +420,7 @@ sku,product,price,qty
     $("launchbar").hidden = false;
     $("lsku").textContent = sku;
     $("lmeta").textContent = (name ? name + " \u00b7 " : "") +
-      (hasPrice ? pn.toFixed(2) : "no price") + " \u00b7 " +
+      (hasPrice ? formatPrice(pn) : "no price") + " \u00b7 " +
       (copies * 2) + " labels";
 
     if (q.get("autoprint") === "1") {
@@ -417,6 +437,15 @@ sku,product,price,qty
 
   $("render").addEventListener("click", build);
   $("print").addEventListener("click", function () { window.print(); });
+
+  // Changing only the "#" part of an address does NOT reload the page, so if the
+  // browser ever hands a second Print Label press to this same tab, the labels
+  // on screen would still be the previous item's - the wrong price on a price
+  // tag. Rebuild on hashchange so that cannot happen. (The old "?" form always
+  // forced a full load, which is why this was not needed before.)
+  window.addEventListener("hashchange", function () {
+    if (typeof qrcode === "function") { fromQuery(); }
+  });
 
   // library present?
   window.addEventListener("load", function () {
