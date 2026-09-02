@@ -68,6 +68,22 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     .sheets .gut{background:repeating-linear-gradient(45deg,transparent,transparent 2px,#e9ece9 2px,#e9ece9 4px)}
   }
 
+  /* Launched from Books: the tab IS the PDF. Everything that belongs to the
+     authoring tool collapses, the viewer fills the window, and Chrome draws
+     its own PDF toolbar inside the frame - so it reads as a PDF tab, not as
+     a web page with a PDF stuck in it. "More options" restores the tool. */
+  body.launched{overflow:hidden}
+  body.launched .app{max-width:none;padding:10px 12px;gap:10px;height:100vh}
+  body.launched header,
+  body.launched #previewhead,
+  body.launched .sheets{display:none}
+  body.launched .launchbar{padding:8px 12px}
+  body.launched #pdfbox{flex:1 1 auto;display:flex;flex-direction:column;
+    padding:0;border:0;background:none;min-height:0}
+  body.launched #pdfbox .previewhead,
+  body.launched #pdfbox .sub{display:none}
+  body.launched #pdfframe{flex:1 1 auto;height:auto;min-height:0;border-radius:4px}
+
   /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
   .cal{display:block;position:relative;width:73mm;height:20mm;background:#fff;overflow:hidden}
   .cal .cbox{position:absolute;top:0;height:20mm;border:.2mm dashed #000}
@@ -714,6 +730,7 @@ sku,product,price,qty
   $("showopts").addEventListener("click", function () {
     document.body.classList.remove("launched");
     $("launchbar").hidden = true;
+    $("pdfbox").scrollIntoView({ block: "start" });
   });
 
   $("render").addEventListener("click", build);
