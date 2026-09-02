@@ -603,6 +603,23 @@ sku,product,price,qty
     };
   }
 
+  // Chrome's built-in PDF viewer honours print() on a same-origin iframe, and a
+  // blob URL counts as same-origin - so the label can go straight to the print
+  // dialog. Only used on the launched path, where the operator pressed
+  // "Print Label" in Books and printing is unambiguously what they want.
+  // If it fails for any reason the viewer is still on screen with its own
+  // print button, so this can only ever save clicks, never cost them.
+  function autoPrintPdf() {
+    var f = $("pdfframe"), fired = false;
+    f.addEventListener("load", function () {
+      if (fired) return;
+      fired = true;
+      setTimeout(function () {                 // let the PDF plugin finish loading
+        try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {}
+      }, 500);
+    }, { once: true });
+  }
+
   var lastPdfUrl = null;
   function makePdf() {
     var got = collectItems();
@@ -673,6 +690,7 @@ sku,product,price,qty
 
     build();
     makePdf();          // the PDF is the reliable print path
+    autoPrintPdf();     // ...and open the print dialog on it straight away
 
     document.body.classList.add("launched");
     $("launchbar").hidden = false;
