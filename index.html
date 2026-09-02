@@ -45,6 +45,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .previewhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
   .sheets{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 
+  #pdfframe{width:100%;height:340px;border:1px solid var(--rule);background:#fff}
+  #pdflink{font-size:13px;color:var(--accent)}
+
   /* ---- the physical sheet: one row of the die-cut roll ---- */
   .sheet{width:73mm;height:20mm;display:flex;background:#fff;overflow:hidden}
   .lab{width:35mm;height:20mm;padding:.6mm 1mm;display:flex;align-items:center;gap:1mm;overflow:hidden}
@@ -88,7 +91,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   <header class="noprint">
     <h1>Panel Living label printer</h1>
-    <p class="sub">Paste items below, check the preview, then print. Each printed page is one 73&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels with a 3&nbsp;mm gutter between them. Set your printer to 73&nbsp;&times;&nbsp;20&nbsp;mm, no margins, scale 100%.</p>
+    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 73&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels with a 3&nbsp;mm gutter &mdash; and the PDF carries that size itself, so the printer dialog cannot shrink or reposition it. Leave the viewer&rsquo;s scaling on <strong>Actual size</strong>.</p>
+    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. That route only comes out right if the driver has a 73&nbsp;&times;&nbsp;20&nbsp;mm paper size and Chrome is set to margins <em>None</em>, scale <em>100</em> &mdash; use the PDF unless you have a reason not to.</p>
   </header>
 
   <div class="launchbar noprint" id="launchbar" hidden>
@@ -143,10 +147,22 @@ sku,product,price,qty
       <button class="primary" id="render">Build labels</button>
       <button id="print" disabled>Print</button>
       <button id="calib">Calibration row</button>
+      <button class="primary" id="makepdf">Make PDF (best for printing)</button>
       <span class="status" id="status">Nothing built yet.</span>
     </div>
 
     <div id="errors"></div>
+  </section>
+
+  <section class="panel noprint" id="pdfbox" hidden>
+    <div class="previewhead">
+      <h2>PDF &mdash; print from here</h2>
+      <a id="pdflink" target="_blank" rel="noopener">Open in a new tab</a>
+    </div>
+    <p class="sub">Each page in this PDF is exactly 73 &times; 20 mm, so the PDF viewer prints
+    it at true size on its own. Use the viewer's print button, and leave scaling on
+    <strong>Actual size</strong> (not &ldquo;Fit&rdquo;).</p>
+    <iframe id="pdfframe" title="Label PDF"></iframe>
   </section>
 
   <div class="previewhead noprint" id="previewhead" hidden>
@@ -423,6 +439,190 @@ sku,product,price,qty
     $("errors").innerHTML = "";
   }
 
+  // ---------- PDF output ----------
+  // The old zohoprintengine label printed reliably because it was a PDF whose
+  // page box WAS the label: Chrome's paper size, margins and scale settings
+  // could not throw it off. This rebuilds that property - same layout as the
+  // on-screen design, emitted as a PDF with a 73 x 20 mm MediaBox, one page
+  // per row. Written by hand rather than with a library so the page stays a
+  // single self-contained file with no CDN.
+  var PT = 72 / 25.4;                    // mm -> PostScript points
+  function pt(mm) { return Math.round(mm * PT * 1000) / 1000; }
+
+  // Courier is a fixed-pitch base-14 font: every glyph is exactly 0.6 em.
+  // That makes the width maths exact, so text can never silently overrun.
+  var MONO_ADVANCE = 0.6;
+
+  function pdfStr(s) {
+    var out = "";
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i), code = s.charCodeAt(i);
+      if (ch === "(" || ch === ")" || ch === "\\") out += "\\" + ch;
+      else if (code >= 32 && code <= 126) out += ch;
+      else if (code <= 255) out += "\\" + ("00" + code.toString(8)).slice(-3);
+      else out += "?";                   // outside WinAnsi
+    }
+    return out;
+  }
+
+  function wrapMono(text, sizePt, widthPt) {
+    var per = Math.max(1, Math.floor(widthPt / (MONO_ADVANCE * sizePt)));
+    if (text.length <= per) return [text];
+    var parts = [], cur = "";
+    for (var i = 0; i < text.length; i++) {
+      cur += text.charAt(i);
+      if (text.charAt(i) === "-") { parts.push(cur); cur = ""; }
+    }
+    if (cur) parts.push(cur);
+    var lines = [], line = "";
+    parts.forEach(function (p) {
+      while (p.length > per) {           // chunk wider than the whole column
+        if (line) { lines.push(line); line = ""; }
+        lines.push(p.slice(0, per));
+        p = p.slice(per);
+      }
+      if ((line + p).length <= per) line += p;
+      else { if (line) lines.push(line); line = p; }
+    });
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // One label's operators, placed xoMm from the left edge of the row.
+  function pdfLabel(it, xoMm, o, rects, texts) {
+    if (!it) return;
+    var q = qrcode(0, o.ecl);
+    q.addData(it.sku, ALNUM_OK.test(it.sku) ? "Alphanumeric" : "Byte");
+    q.make();
+    var n = q.getModuleCount();
+    var cell = o.qrMm / (n + 8);         // 4-module quiet zone each side
+    var qrX = xoMm + 1, qrY = (20 - o.qrMm) / 2;
+
+    for (var r = 0; r < n; r++) {
+      var c = 0;
+      while (c < n) {
+        if (!q.isDark(r, c)) { c++; continue; }
+        var c0 = c;
+        while (c < n && q.isDark(r, c)) c++;
+        rects.push(pt(qrX + (4 + c0) * cell) + " " +
+                   pt(qrY + o.qrMm - (4 + r + 1) * cell) + " " +
+                   pt((c - c0) * cell) + " " + pt(cell) + " re");
+      }
+    }
+
+    var textXmm = xoMm + 1 + o.qrMm + 1;
+    var textWpt = pt(33 - o.qrMm - 1);
+    var lines = [];
+    if (o.showName && it.product) {
+      lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
+    }
+    wrapMono(it.sku, o.skuPt, textWpt).forEach(function (t) {
+      lines.push({ t: t, size: o.skuPt, font: "F1" });
+    });
+    if (o.showPrice && it.price !== "") {
+      var p = formatPrice(it.price);
+      var size = Math.min(o.pricePt, textWpt / (MONO_ADVANCE * p.length));
+      lines.push({ t: p, size: size, font: "F2" });
+    }
+
+    var gap = pt(0.4), block = 0;
+    lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
+    var y = (pt(20) + block) / 2;        // top of the vertically centred stack
+    lines.forEach(function (L, i) {
+      if (i) y -= gap;
+      var baseline = Math.round((y - L.size * 0.81) * 1000) / 1000;
+      texts.push("BT /" + L.font + " " + (Math.round(L.size * 1000) / 1000) +
+                 " Tf " + pt(textXmm) + " " + baseline +
+                 " Td (" + pdfStr(L.t) + ") Tj ET");
+      y -= L.size * 1.12;
+    });
+  }
+
+  function buildPdf(items, o) {
+    var W = pt(73), H = pt(20);
+    var objects = [];
+    function put(n, body) { objects[n - 1] = body; }
+
+    var kids = [];
+    for (var i = 0, page = 6; i < items.length; i += 2, page += 2) {
+      var rects = [], texts = [];
+      pdfLabel(items[i], 0, o, rects, texts);
+      pdfLabel(items[i + 1], 38, o, rects, texts);   // 35 mm label + 3 mm gutter
+      var content = "q\n1 1 1 rg\n0 0 " + W + " " + H + " re\nf\n0 0 0 rg\n" +
+                    (rects.length ? rects.join("\n") + "\nf\n" : "") +
+                    texts.join("\n") + "\nQ\n";
+      kids.push(page + " 0 R");
+      put(page, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + H +
+                "] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents " +
+                (page + 1) + " 0 R >>");
+      put(page + 1, "<< /Length " + content.length + " >>\nstream\n" + content + "endstream");
+    }
+    put(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    put(2, "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + kids.length + " >>");
+    put(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>");
+    put(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>");
+    put(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+
+    // Everything written above is ASCII, so string length == byte length and
+    // the xref offsets are correct without any encoding step.
+    var out = "%PDF-1.4\n", offs = [];
+    for (var n = 1; n <= objects.length; n++) {
+      offs[n] = out.length;
+      out += n + " 0 obj\n" + objects[n - 1] + "\nendobj\n";
+    }
+    var startxref = out.length;
+    out += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+    for (var k = 1; k <= objects.length; k++) {
+      out += ("0000000000" + offs[k]).slice(-10) + " 00000 n \n";
+    }
+    out += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\n" +
+           "startxref\n" + startxref + "\n%%EOF";
+    return new Blob([out], { type: "application/pdf" });
+  }
+
+  // Gather exactly what build() would draw, so PDF and preview agree.
+  function collectItems() {
+    var parsed = parseInput($("input").value);
+    if (!parsed.rows.length) return null;
+    var useQty = $("useqty").checked, pairing = $("pairing").value, items = [];
+    parsed.rows.forEach(function (r) {
+      var n = useQty ? r.qty : 1;
+      if (pairing === "dup") n = n * 2;
+      for (var i = 0; i < n; i++) items.push(r);
+    });
+    return {
+      items: items,
+      opts: {
+        qrMm: parseFloat($("qrmm").value) || 18,
+        skuPt: parseFloat($("skupt").value) || 7.5,
+        pricePt: parseFloat($("pricept").value) || 10,
+        ecl: $("ecl").value,
+        showPrice: $("showprice").checked,
+        showName: $("showname").checked
+      }
+    };
+  }
+
+  var lastPdfUrl = null;
+  function makePdf() {
+    var got = collectItems();
+    if (!got) {
+      $("errors").innerHTML = '<div class="err">Nothing to put in a PDF &mdash; paste at least one SKU.</div>';
+      return;
+    }
+    var blob = buildPdf(got.items, got.opts);
+    if (lastPdfUrl) URL.revokeObjectURL(lastPdfUrl);
+    lastPdfUrl = URL.createObjectURL(blob);
+    var rows = Math.ceil(got.items.length / 2);
+    $("pdflink").href = lastPdfUrl;
+    $("pdfbox").hidden = false;
+    $("pdfframe").src = lastPdfUrl;
+    $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
+      " page(s) of 73 x 20 mm. Print from the PDF viewer - its page IS the label, " +
+      "so Chrome's paper size and scale no longer matter.";
+    $("errors").innerHTML = "";
+  }
+
   function formatPrice(p) {
     var n = parseFloat(String(p).replace(/[^0-9.\-]/g, ""));
     if (isNaN(n)) return String(p);
@@ -494,6 +694,7 @@ sku,product,price,qty
 
   $("render").addEventListener("click", build);
   $("calib").addEventListener("click", buildCalibration);
+  $("makepdf").addEventListener("click", makePdf);
   $("print").addEventListener("click", function () { window.print(); });
 
   // Changing only the "#" part of an address does NOT reload the page, so if the
