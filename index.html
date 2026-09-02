@@ -49,7 +49,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   #pdflink{font-size:13px;color:var(--accent)}
 
   /* ---- the physical sheet: one row of the die-cut roll ---- */
-  .sheet{width:73mm;height:20mm;display:flex;background:#fff;overflow:hidden}
+  .sheet{width:75mm;height:23mm;padding:0 1mm 3mm;display:flex;background:#fff;overflow:hidden}
   .lab{width:35mm;height:20mm;padding:.6mm 1mm;display:flex;align-items:center;gap:1mm;overflow:hidden}
   .gut{width:3mm;height:20mm;flex:0 0 3mm}
   .qr{flex:0 0 auto;display:block}
@@ -85,14 +85,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   body.launched #pdfframe{flex:1 1 auto;height:auto;min-height:0;border-radius:4px}
 
   /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
-  .cal{display:block;position:relative;width:73mm;height:20mm;background:#fff;overflow:hidden}
+  .cal{display:block;position:relative;width:75mm;height:23mm;background:#fff;overflow:hidden}
   .cal .cbox{position:absolute;top:0;height:20mm;border:.2mm dashed #000}
   .cal .ctick{position:absolute;background:#000}
   .cal .cnum{position:absolute;font-family:var(--mono);font-size:4.5pt;color:#000;line-height:1}
   .cal .ccap{position:absolute;font-family:var(--mono);font-size:5pt;color:#000;line-height:1}
 
   @media print{
-    @page{size:73mm 20mm;margin:0}
+    @page{size:75mm 23mm;margin:0}
     body{background:#fff}
     .app{max-width:none;padding:0;gap:0}
     .noprint{display:none !important}
@@ -107,8 +107,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   <header class="noprint">
     <h1>Panel Living label printer</h1>
-    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 73&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels with a 3&nbsp;mm gutter &mdash; and the PDF carries that size itself, so the printer dialog cannot shrink or reposition it. Leave the viewer&rsquo;s scaling on <strong>Actual size</strong>.</p>
-    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. That route only comes out right if the driver has a 73&nbsp;&times;&nbsp;20&nbsp;mm paper size and Chrome is set to margins <em>None</em>, scale <em>100</em> &mdash; use the PDF unless you have a reason not to.</p>
+    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 75&nbsp;&times;&nbsp;23&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels, 3&nbsp;mm apart, 1&nbsp;mm of liner each side &mdash; and the PDF carries that size itself, so the printer dialog cannot shrink or reposition it. Leave the viewer&rsquo;s scaling on <strong>Actual size</strong>.</p>
+    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. That route only comes out right if the driver has a 75&nbsp;&times;&nbsp;23&nbsp;mm paper size and Chrome is set to margins <em>None</em>, scale <em>100</em> &mdash; use the PDF unless you have a reason not to.</p>
   </header>
 
   <div class="launchbar noprint" id="launchbar" hidden>
@@ -175,7 +175,7 @@ sku,product,price,qty
       <h2>PDF &mdash; print from here</h2>
       <a id="pdflink" target="_blank" rel="noopener">Open in a new tab</a>
     </div>
-    <p class="sub">Each page in this PDF is exactly 73 &times; 20 mm, so the PDF viewer prints
+    <p class="sub">Each page in this PDF is exactly 75 &times; 23 mm, so the PDF viewer prints
     it at true size on its own. Use the viewer's print button, and leave scaling on
     <strong>Actual size</strong> (not &ldquo;Fit&rdquo;).</p>
     <iframe id="pdfframe" title="Label PDF"></iframe>
@@ -417,31 +417,32 @@ sku,product,price,qty
   // here if that ever stops being true - it is the only place the symbol
   // is written.
   var CUR = "$";
-  // Prints one 73x20 mm row holding a millimetre ruler and the two 35 mm label
+  // Prints one 75x23 mm row holding a millimetre ruler and the two 35 mm label
   // outlines. Measure the printed strip against a real ruler: if the 70 mm tick
   // is not at 70 mm the scale is not 100%, and no layout work will fix that.
   function buildCalibration() {
     var sheets = $("sheets"), h = [];
     sheets.innerHTML = "";
 
-    h.push('<div class="cbox" style="left:0;width:35mm"></div>');
-    h.push('<div class="cbox" style="left:38mm;width:35mm"></div>');
+    // dashed boxes sit where the die-cut labels are: 1mm in, then 35-3-35
+    h.push('<div class="cbox" style="left:' + SIDE + 'mm;width:' + LABEL_W + 'mm"></div>');
+    h.push('<div class="cbox" style="left:' + (SIDE + LABEL_W + GUTTER) + 'mm;width:' + LABEL_W + 'mm"></div>');
 
-    for (var x = 0; x <= 73; x++) {
+    for (var x = 0; x <= PAGE_W; x++) {
       var tall = x % 10 === 0 ? 3.6 : (x % 5 === 0 ? 2.4 : 1.2);
       h.push('<div class="ctick" style="left:' + x + 'mm;top:0;width:.15mm;height:' + tall + 'mm"></div>');
-      if (x % 10 === 0 && x <= 70) {
+      if (x % 10 === 0 && x <= PAGE_W - 5) {
         h.push('<div class="cnum" style="left:' + (x + 0.4) + 'mm;top:4mm">' + x + '</div>');
       }
     }
-    for (var y = 0; y <= 20; y++) {
+    for (var y = 0; y <= PAGE_H; y++) {
       var wide = y % 10 === 0 ? 3.6 : (y % 5 === 0 ? 2.4 : 1.2);
       h.push('<div class="ctick" style="left:0;top:' + y + 'mm;height:.15mm;width:' + wide + 'mm"></div>');
     }
     h.push('<div class="cnum" style="left:4.2mm;top:9mm">10</div>');
     h.push('<div class="cnum" style="left:4.2mm;top:16.5mm">20</div>');
-    h.push('<div class="ccap" style="left:41mm;top:9mm">73 x 20 mm @ 100%</div>');
-    h.push('<div class="ccap" style="left:41mm;top:13mm">boxes = 35-3-35</div>');
+    h.push('<div class="ccap" style="left:41mm;top:9mm">' + PAGE_W + ' x ' + PAGE_H + ' mm @ 100%</div>');
+    h.push('<div class="ccap" style="left:41mm;top:13mm">1-35-3-35-1, band ' + LABEL_H + 'mm</div>');
 
     var sheet = document.createElement("div");
     sheet.className = "sheet cal";
@@ -459,9 +460,22 @@ sku,product,price,qty
   // The old zohoprintengine label printed reliably because it was a PDF whose
   // page box WAS the label: Chrome's paper size, margins and scale settings
   // could not throw it off. This rebuilds that property - same layout as the
-  // on-screen design, emitted as a PDF with a 73 x 20 mm MediaBox, one page
+  // on-screen design, emitted as a PDF with a 75 x 23 mm MediaBox, one page
   // per row. Written by hand rather than with a library so the page stays a
   // single self-contained file with no CDN.
+  // The die-cut roll, measured against a ruler 2 Sep 2026:
+  //   liner 75 mm wide, labels 35 x 20 mm, 3 mm between the two columns,
+  //   23 mm row pitch (20 mm label + 3 mm gap before the next row).
+  // That leaves 1 mm of liner either side: 1 + 35 + 3 + 35 + 1 = 75.
+  // The PDF page is the whole pitch, so the printer's gap sensor and the
+  // page boundary agree and nothing creeps from row to row.
+  var LABEL_W = 35, LABEL_H = 20, GUTTER = 3, SIDE = 1, ROW_GAP = 3;
+  var PAGE_W = SIDE * 2 + LABEL_W * 2 + GUTTER;   // 75 mm
+  var PAGE_H = LABEL_H + ROW_GAP;                 // 23 mm
+  // Printing starts just after the gap, so the label band is the TOP of the
+  // page; in PDF coordinates (origin bottom-left) that is ROW_GAP upwards.
+  var BAND_Y = ROW_GAP;
+
   var PT = 72 / 25.4;                    // mm -> PostScript points
   function pt(mm) { return Math.round(mm * PT * 1000) / 1000; }
 
@@ -512,7 +526,7 @@ sku,product,price,qty
     q.make();
     var n = q.getModuleCount();
     var cell = o.qrMm / (n + 8);         // 4-module quiet zone each side
-    var qrX = xoMm + 1, qrY = (20 - o.qrMm) / 2;
+    var qrX = xoMm + 1, qrY = BAND_Y + (LABEL_H - o.qrMm) / 2;
 
     for (var r = 0; r < n; r++) {
       var c = 0;
@@ -527,7 +541,7 @@ sku,product,price,qty
     }
 
     var textXmm = xoMm + 1 + o.qrMm + 1;
-    var textWpt = pt(33 - o.qrMm - 1);
+    var textWpt = pt(LABEL_W - 2 - o.qrMm - 1);   // label less 1mm padding each side
     var lines = [];
     if (o.showName && it.product) {
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
@@ -543,7 +557,7 @@ sku,product,price,qty
 
     var gap = pt(0.4), block = 0;
     lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
-    var y = (pt(20) + block) / 2;        // top of the vertically centred stack
+    var y = pt(BAND_Y) + (pt(LABEL_H) + block) / 2;   // top of the centred stack
     lines.forEach(function (L, i) {
       if (i) y -= gap;
       var baseline = Math.round((y - L.size * 0.81) * 1000) / 1000;
@@ -555,15 +569,15 @@ sku,product,price,qty
   }
 
   function buildPdf(items, o) {
-    var W = pt(73), H = pt(20);
+    var W = pt(PAGE_W), H = pt(PAGE_H);
     var objects = [];
     function put(n, body) { objects[n - 1] = body; }
 
     var kids = [];
     for (var i = 0, page = 6; i < items.length; i += 2, page += 2) {
       var rects = [], texts = [];
-      pdfLabel(items[i], 0, o, rects, texts);
-      pdfLabel(items[i + 1], 38, o, rects, texts);   // 35 mm label + 3 mm gutter
+      pdfLabel(items[i], SIDE, o, rects, texts);
+      pdfLabel(items[i + 1], SIDE + LABEL_W + GUTTER, o, rects, texts);
       var content = "q\n1 1 1 rg\n0 0 " + W + " " + H + " re\nf\n0 0 0 rg\n" +
                     (rects.length ? rects.join("\n") + "\nf\n" : "") +
                     texts.join("\n") + "\nQ\n";
@@ -634,7 +648,7 @@ sku,product,price,qty
     $("pdfbox").hidden = false;
     $("pdfframe").src = lastPdfUrl;
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
-      " page(s) of 73 x 20 mm. Print from the PDF viewer - its page IS the label, " +
+      " page(s) of 75 x 23 mm. Print from the PDF viewer - its page IS the label, " +
       "so Chrome's paper size and scale no longer matter.";
     $("errors").innerHTML = "";
     return lastPdfUrl;
