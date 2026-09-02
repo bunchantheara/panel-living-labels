@@ -61,6 +61,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .sheets .lab{outline:1px dashed #c2492f;outline-offset:-1px}
   .sheets .gut{background:repeating-linear-gradient(45deg,transparent,transparent 2px,#e9ece9 2px,#e9ece9 4px)}
 
+  /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
+  .cal{display:block;position:relative;width:73mm;height:20mm;background:#fff;overflow:hidden}
+  .cal .cbox{position:absolute;top:0;height:20mm;border:.2mm dashed #000}
+  .cal .ctick{position:absolute;background:#000}
+  .cal .cnum{position:absolute;font-family:var(--mono);font-size:4.5pt;color:#000;line-height:1}
+  .cal .ccap{position:absolute;font-family:var(--mono);font-size:5pt;color:#000;line-height:1}
+
   @media print{
     @page{size:73mm 20mm;margin:0}
     body{background:#fff}
@@ -133,6 +140,7 @@ sku,product,price,qty
     <div class="row">
       <button class="primary" id="render">Build labels</button>
       <button id="print" disabled>Print</button>
+      <button id="calib">Calibration row</button>
       <span class="status" id="status">Nothing built yet.</span>
     </div>
 
@@ -366,6 +374,44 @@ sku,product,price,qty
   // here if that ever stops being true - it is the only place the symbol
   // is written.
   var CUR = "$";
+  // Prints one 73x20 mm row holding a millimetre ruler and the two 35 mm label
+  // outlines. Measure the printed strip against a real ruler: if the 70 mm tick
+  // is not at 70 mm the scale is not 100%, and no layout work will fix that.
+  function buildCalibration() {
+    var sheets = $("sheets"), h = [];
+    sheets.innerHTML = "";
+
+    h.push('<div class="cbox" style="left:0;width:35mm"></div>');
+    h.push('<div class="cbox" style="left:38mm;width:35mm"></div>');
+
+    for (var x = 0; x <= 73; x++) {
+      var tall = x % 10 === 0 ? 3.6 : (x % 5 === 0 ? 2.4 : 1.2);
+      h.push('<div class="ctick" style="left:' + x + 'mm;top:0;width:.15mm;height:' + tall + 'mm"></div>');
+      if (x % 10 === 0 && x <= 70) {
+        h.push('<div class="cnum" style="left:' + (x + 0.4) + 'mm;top:4mm">' + x + '</div>');
+      }
+    }
+    for (var y = 0; y <= 20; y++) {
+      var wide = y % 10 === 0 ? 3.6 : (y % 5 === 0 ? 2.4 : 1.2);
+      h.push('<div class="ctick" style="left:0;top:' + y + 'mm;height:.15mm;width:' + wide + 'mm"></div>');
+    }
+    h.push('<div class="cnum" style="left:4.2mm;top:9mm">10</div>');
+    h.push('<div class="cnum" style="left:4.2mm;top:16.5mm">20</div>');
+    h.push('<div class="ccap" style="left:41mm;top:9mm">73 x 20 mm @ 100%</div>');
+    h.push('<div class="ccap" style="left:41mm;top:13mm">boxes = 35-3-35</div>');
+
+    var sheet = document.createElement("div");
+    sheet.className = "sheet cal";
+    sheet.innerHTML = h.join("");
+    sheets.appendChild(sheet);
+
+    $("previewhead").hidden = false;
+    $("count").textContent = "calibration row";
+    $("status").textContent = "Calibration row built. Print it, then measure: the 70 mm tick must sit at 70 mm and each dashed box must fill one label exactly.";
+    $("print").disabled = false;
+    $("errors").innerHTML = "";
+  }
+
   function formatPrice(p) {
     var n = parseFloat(String(p).replace(/[^0-9.\-]/g, ""));
     if (isNaN(n)) return String(p);
@@ -436,6 +482,7 @@ sku,product,price,qty
   });
 
   $("render").addEventListener("click", build);
+  $("calib").addEventListener("click", buildCalibration);
   $("print").addEventListener("click", function () { window.print(); });
 
   // Changing only the "#" part of an address does NOT reload the page, so if the
