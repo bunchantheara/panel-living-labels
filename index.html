@@ -619,23 +619,6 @@ sku,product,price,qty
     };
   }
 
-  // Chrome's built-in PDF viewer honours print() on a same-origin iframe, and a
-  // blob URL counts as same-origin - so the label can go straight to the print
-  // dialog. Only used on the launched path, where the operator pressed
-  // "Print Label" in Books and printing is unambiguously what they want.
-  // If it fails for any reason the viewer is still on screen with its own
-  // print button, so this can only ever save clicks, never cost them.
-  function autoPrintPdf() {
-    var f = $("pdfframe"), fired = false;
-    f.addEventListener("load", function () {
-      if (fired) return;
-      fired = true;
-      setTimeout(function () {                 // let the PDF plugin finish loading
-        try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {}
-      }, 500);
-    }, { once: true });
-  }
-
   var lastPdfUrl = null;
   function makePdf() {
     var got = collectItems();
@@ -654,6 +637,7 @@ sku,product,price,qty
       " page(s) of 73 x 20 mm. Print from the PDF viewer - its page IS the label, " +
       "so Chrome's paper size and scale no longer matter.";
     $("errors").innerHTML = "";
+    return lastPdfUrl;
   }
 
   function formatPrice(p) {
@@ -705,15 +689,23 @@ sku,product,price,qty
     $("pairing").value = "dup";
 
     build();
-    makePdf();          // the PDF is the reliable print path
-    autoPrintPdf();     // ...and open the print dialog on it straight away
 
+    // Put the launched view in place BEFORE navigating. If the browser refuses
+    // to hand the tab to a blob URL, this is what the operator is left looking
+    // at - the full-window PDF viewer - instead of the bare authoring tool.
     document.body.classList.add("launched");
     $("launchbar").hidden = false;
     $("lsku").textContent = sku;
     $("lmeta").textContent = (name ? name + " \u00b7 " : "") +
       (hasPrice ? formatPrice(pn) : "no price") + " \u00b7 " +
       (copies * 2) + " labels";
+
+    // Then hand the tab over to the PDF itself, so Chrome's own viewer owns the
+    // window: real toolbar, real print button, page already sized to the label.
+    // That is what the old zohoprintengine label did. The blob outlives this
+    // document because the navigation is already in flight when it goes away.
+    var pdfUrl = makePdf();
+    if (pdfUrl) location.replace(pdfUrl);
 
     return true;
   }
