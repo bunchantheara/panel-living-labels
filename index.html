@@ -107,7 +107,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   <header class="noprint">
     <h1>Panel Living label printer</h1>
-    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 75&nbsp;&times;&nbsp;23&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels, 3&nbsp;mm apart, 1&nbsp;mm of liner each side &mdash; and the PDF carries that size itself, so the printer dialog cannot shrink or reposition it. Leave the viewer&rsquo;s scaling on <strong>Actual size</strong>.</p>
+    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 75&nbsp;&times;&nbsp;23&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels, 3&nbsp;mm apart, 1&nbsp;mm of liner each side &mdash; and the PDF carries that size itself. That fixes the page size, but <strong>it does not stop Chrome scaling it</strong>: in the print dialog set <strong>Scale = Actual size</strong> (never &ldquo;Fit to paper&rdquo;) and <strong>Paper size = 75 &times; 23 mm</strong>. Those two are still yours to get right.</p>
     <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. That route only comes out right if the driver has a 75&nbsp;&times;&nbsp;23&nbsp;mm paper size and Chrome is set to margins <em>None</em>, scale <em>100</em> &mdash; use the PDF unless you have a reason not to.</p>
   </header>
 
@@ -649,7 +649,7 @@ sku,product,price,qty
     $("pdfframe").src = lastPdfUrl;
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
       " page(s) of 75 x 23 mm. Print from the PDF viewer - its page IS the label, " +
-      "so Chrome's paper size and scale no longer matter.";
+      "Set Scale to Actual size - NOT Fit to paper - and Paper size to 75 x 23 mm.";
     $("errors").innerHTML = "";
     return lastPdfUrl;
   }
