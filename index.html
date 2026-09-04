@@ -343,16 +343,40 @@ sku,product,price,qty
       for (var i = 0; i < n; i++) items.push(r);
     });
 
+    // The roll geometry drives both the fit check and the layout below,
+    // so read it before either.
+    var g = geom();
+
     // warnings
     var warns = parsed.problems.slice();
-    var tooTight = qrMm > 18.8;
-    if (tooTight) warns.push("QR is " + qrMm + " mm; the label is 20 mm tall with 0.6 mm padding, so anything over 18.8 mm will be clipped.");
+
+    // Does the content actually fit the label? The old check was hard-coded to
+    // a 20 mm label and the side-by-side layout, so on a taller label with the
+    // column layout an oversized QR pushed the price clean off the bottom with
+    // nothing said. Silence there costs a roll of stock.
+    var padded = g.labelH - 1.2;                     // 0.6 mm padding top+bottom
+    var maxQr = padded;
+    if (layout === "col") {
+      var tallest = 0;
+      items.forEach(function (it) {
+        var b = textBlockPt(it, { showName: showName, showPrice: showPrice,
+                                  skuPt: skuPt, pricePt: pricePt },
+                            pt(g.labelW - 2)) / PT;
+        if (b > tallest) tallest = b;
+      });
+      maxQr = padded - 0.8 - tallest;                // 0.8 mm QR-to-text gap
+    }
+    if (qrMm > maxQr) {
+      warns.push("QR is " + qrMm + " mm, but only " + (Math.floor(maxQr * 10) / 10) +
+        " mm fits on a " + g.labelW + " x " + g.labelH + " mm label with this layout" +
+        (layout === "col" ? " and the text beneath it" : "") +
+        ". Anything larger is drawn off the label.");
+    }
 
     var sheets = $("sheets");
     sheets.innerHTML = "";
     var made = 0, biggestVersion = 0;
 
-    var g = geom();
     // Mirror the PDF page exactly: the sheet IS the page, and its padding
     // carries the liner margins and the row gap when we are paging by row.
     for (var i = 0; i < items.length; i += g.perPage) {
@@ -603,6 +627,21 @@ sku,product,price,qty
     });
     if (line) lines.push(line);
     return lines;
+  }
+
+  // How tall the stacked text comes out, in points. Shared so the fit warning
+  // in build() and the placement in pdfLabel() can never drift apart.
+  function textBlockPt(it, o, widthPt) {
+    var sizes = [];
+    if (o.showName && it.product) sizes.push(o.skuPt - 1);
+    wrapMono(it.sku, o.skuPt, widthPt).forEach(function () { sizes.push(o.skuPt); });
+    if (o.showPrice && it.price !== "") {
+      var p = formatPrice(it.price);
+      sizes.push(Math.min(o.pricePt, widthPt / (MONO_ADVANCE * p.length)));
+    }
+    var gap = pt(0.4), block = 0;
+    sizes.forEach(function (sz, i) { block += sz * 1.12; if (i) block += gap; });
+    return block;
   }
 
   // One label's operators, placed xoMm from the left edge of the row.
