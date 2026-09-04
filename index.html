@@ -56,6 +56,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .sheet{display:flex;background:#fff;overflow:hidden}   /* size set per build */
   .gut{flex:0 0 auto}   /* height set per build */
   .lab{padding:.6mm 1mm;display:flex;align-items:center;overflow:hidden}  /* size set per build */
+  .lab.col{flex-direction:column;justify-content:center;gap:.8mm}
+  .lab.col .txt{align-items:center;text-align:center}
+  .lab.col .sku,.lab.col .price,.lab.col .name{text-align:center}
   .qr{flex:0 0 auto;display:block}
   .qr svg{display:block;width:100%;height:100%}
   .txt{min-width:0;display:flex;flex-direction:column;gap:.4mm;overflow:hidden}
@@ -146,6 +149,12 @@ sku,product,price,qty
           <option value="M" selected>M — 15%</option>
           <option value="Q">Q — 25%</option>
           <option value="H">H — 30%</option>
+        </select>
+      </div>
+      <div class="ctl">Layout
+        <select id="layout">
+          <option value="row" selected>QR left, text right</option>
+          <option value="col">QR on top, text below</option>
         </select>
       </div>
       <div class="ctl">Page
@@ -323,6 +332,7 @@ sku,product,price,qty
     var showPrice = $("showprice").checked;
     var showName = $("showname").checked;
     var useQty = $("useqty").checked;
+    var layout = $("layout").value;
     var pairing = $("pairing").value;
 
     // expand copies
@@ -366,7 +376,7 @@ sku,product,price,qty
 
     function labelEl(it) {
       var lab = document.createElement("div");
-      lab.className = "lab";
+      lab.className = "lab" + (layout === "col" ? " col" : "");
       lab.style.width = g.labelW + "mm";
       lab.style.height = g.labelH + "mm";
 
@@ -383,7 +393,7 @@ sku,product,price,qty
       txt.className = "txt";
       // 1mm narrower than the space the QR leaves, so the longest price still
       // clears the die-cut edge. Mirrors textWpt in the PDF path.
-      txt.style.width = (g.labelW - 2 - qrMm - 1) + "mm";
+      txt.style.width = (layout === "col" ? (g.labelW - 2) : (g.labelW - 2 - qrMm - 1)) + "mm";
 
       if (showName && it.product) {
         var nm = document.createElement("div");
@@ -603,7 +613,42 @@ sku,product,price,qty
     q.make();
     var n = q.getModuleCount();
     var cell = o.qrMm / (n + 8);         // 4-module quiet zone each side
-    var qrX = xoMm + 1, qrY = g.bandY + (g.labelH - o.qrMm) / 2;
+    var col = o.layout === "col";
+
+    // Text is measured before anything is placed, because in the column
+    // layout the QR position depends on how tall the text block turns out.
+    // Across the full label width a SKU usually fits on one line, which is
+    // why the column layout suits a taller label so much better.
+    var textWpt = col ? pt(g.labelW - 2)
+                      : pt(g.labelW - 2 - o.qrMm - 1);
+    var lines = [];
+    if (o.showName && it.product) {
+      lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
+    }
+    wrapMono(it.sku, o.skuPt, textWpt).forEach(function (t) {
+      lines.push({ t: t, size: o.skuPt, font: "F1" });
+    });
+    if (o.showPrice && it.price !== "") {
+      var p = formatPrice(it.price);
+      var size = Math.min(o.pricePt, textWpt / (MONO_ADVANCE * p.length));
+      lines.push({ t: p, size: size, font: "F2" });
+    }
+    var gap = pt(0.4), block = 0;
+    lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
+
+    var qrX, qrY, textTopPt;
+    if (col) {
+      var qrGap = 0.8;                                  // mm between QR and text
+      var stack = o.qrMm + qrGap + block / PT;          // whole content, in mm
+      var topMm = g.bandY + (g.labelH + stack) / 2;     // top of the stack
+      qrX = xoMm + (g.labelW - o.qrMm) / 2;             // centred across
+      qrY = topMm - o.qrMm;
+      textTopPt = pt(topMm - o.qrMm - qrGap);
+    } else {
+      qrX = xoMm + 1;
+      qrY = g.bandY + (g.labelH - o.qrMm) / 2;
+      textTopPt = pt(g.bandY) + (pt(g.labelH) + block) / 2;
+    }
 
     for (var r = 0; r < n; r++) {
       var c = 0;
@@ -617,29 +662,16 @@ sku,product,price,qty
       }
     }
 
-    var textXmm = xoMm + 1 + o.qrMm;      // butts the QR box; its quiet zone is the gap
-    var textWpt = pt(g.labelW - 2 - o.qrMm - 1);  // padding both sides, then 1mm spare right
-    var lines = [];
-    if (o.showName && it.product) {
-      lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
-    }
-    wrapMono(it.sku, o.skuPt, textWpt).forEach(function (t) {
-      lines.push({ t: t, size: o.skuPt, font: "F1" });
-    });
-    if (o.showPrice && it.price !== "") {
-      var p = formatPrice(it.price);
-      var size = Math.min(o.pricePt, textWpt / (MONO_ADVANCE * p.length));
-      lines.push({ t: p, size: size, font: "F2" });
-    }
-
-    var gap = pt(0.4), block = 0;
-    lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
-    var y = pt(g.bandY) + (pt(g.labelH) + block) / 2; // top of the centred stack
+    var y = textTopPt;
     lines.forEach(function (L, i) {
       if (i) y -= gap;
       var baseline = Math.round((y - L.size * 0.81) * 1000) / 1000;
+      // Courier is fixed-pitch, so centring is exact arithmetic.
+      var wPt = L.t.length * MONO_ADVANCE * L.size;
+      var xPt = col ? pt(xoMm) + (pt(g.labelW) - wPt) / 2
+                    : pt(xoMm + 1 + o.qrMm);
       texts.push("BT /" + L.font + " " + (Math.round(L.size * 1000) / 1000) +
-                 " Tf " + pt(textXmm) + " " + baseline +
+                 " Tf " + (Math.round(xPt * 1000) / 1000) + " " + baseline +
                  " Td (" + pdfStr(L.t) + ") Tj ET");
       y -= L.size * 1.12;
     });
@@ -707,7 +739,8 @@ sku,product,price,qty
         pricePt: parseFloat($("pricept").value) || 10,
         ecl: $("ecl").value,
         showPrice: $("showprice").checked,
-        showName: $("showname").checked
+        showName: $("showname").checked,
+        layout: $("layout").value
       }
     };
   }
@@ -825,7 +858,7 @@ sku,product,price,qty
   $("makepdf").addEventListener("click", makePdf);
   // Changing the page shape invalidates whatever is on screen, so rebuild.
   // Any roll or page change invalidates what is on screen, so redo it.
-  ["pagemode", "labw", "labh", "across", "gapx", "gapy", "side"].forEach(function (id) {
+  ["pagemode", "layout", "labw", "labh", "across", "gapx", "gapy", "side"].forEach(function (id) {
     $(id).addEventListener("change", function () {
       applyPageSize();
       showRoll();
