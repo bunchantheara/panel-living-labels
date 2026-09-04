@@ -153,8 +153,8 @@ sku,product,price,qty
       </div>
       <div class="ctl">Layout
         <select id="layout">
-          <option value="row">QR left, text right</option>
-          <option value="col" selected>QR on top, text below</option>
+          <option value="row" selected>QR left, text right</option>
+          <option value="col">QR on top, text below</option>
         </select>
       </div>
       <div class="ctl">Page
@@ -334,6 +334,7 @@ sku,product,price,qty
     var showName = $("showname").checked;
     var useQty = $("useqty").checked;
     var layout = $("layout").value;
+    var skuLines = 2;
     var pairing = $("pairing").value;
 
     // expand copies
@@ -355,10 +356,9 @@ sku,product,price,qty
                  showPrice: showPrice, showName: showName, ecl: ecl,
                  autofit: $("autofit").checked };
     var fitted = autoFit(items, opts, g);
-    qrMm = fitted.qrMm; skuPt = fitted.skuPt;
-    opts.qrMm = qrMm; opts.skuPt = skuPt;
-    warns = warns.concat(fitted.notes, fitWarnings(items, opts, g),
-                         scanWarnings(items, opts, g));
+    qrMm = fitted.qrMm; skuPt = fitted.skuPt; skuLines = fitted.skuLines;
+    opts.qrMm = qrMm; opts.skuPt = skuPt; opts.skuLines = skuLines;
+    warns = warns.concat(fitWarnings(items, opts, g), scanWarnings(items, opts, g));
 
     var sheets = $("sheets");
     sheets.innerHTML = "";
@@ -413,7 +413,7 @@ sku,product,price,qty
         nm.textContent = it.product;
         txt.appendChild(nm);
       }
-      splitSku(it.sku).forEach(function (part) {
+      splitInto(it.sku, skuLines).forEach(function (part) {
         var sk = document.createElement("div");
         sk.className = "sku";
         sk.style.fontSize = skuPt + "pt";
@@ -451,8 +451,9 @@ sku,product,price,qty
     $("previewhead").hidden = false;
     var pageCount = Math.ceil(made / g.perPage);
     $("count").textContent = made + " labels · " + pageCount + " page" + (pageCount === 1 ? "" : "s");
-    $("status").textContent = "Built " + made + " labels on " + pageCount + " page(s) of " +
-      g.W + " x " + g.H + " mm. QR version " + biggestVersion + ", " + ecl + " correction." +
+    $("status").textContent = fitted.notes.join(" ") + " Built " + made + " labels on " +
+      pageCount + " page(s) of " + g.W + " x " + g.H + " mm, QR version " + biggestVersion +
+      ", " + ecl + " correction." +
       (shrunk ? " Price shrunk to fit on " + shrunk + " of them." : "");
     $("print").disabled = false;
 
@@ -601,20 +602,40 @@ sku,product,price,qty
   //
   // The break goes on the hyphen nearest the midpoint, so the halves stay
   // balanced and the SKU still reads in its natural groups.
-  function splitSku(sku) {
+  // Break after a hyphen OR a slash: Panel Living uses hyphens, 2Sister and
+  // TU Cabinet use both (2S-DAG-EAR-00007/10, BLU-WAH-RCH-D36-RSM/ROT-00017/30).
+  // Splitting into N parts picks the cuts that make the LONGEST part as short
+  // as possible, because that longest part is what caps the type size. Few
+  // enough separators that brute force is instant.
+  function splitInto(sku, n) {
     if (!sku) return [""];
-    // Break after a hyphen OR a slash: Panel Living uses hyphens, 2Sister and
-    // TU Cabinet use both (2S-DAG-EAR-00007/10, BLU-WAH-RCH-D36-RSM/ROT-00017/30).
-    var mid = sku.length / 2, best = -1, bestDist = 1e9;
+    if (n <= 1) return [sku];
+    var cuts = [];
     for (var i = 0; i < sku.length - 1; i++) {
       var ch = sku.charAt(i);
-      if (ch === "-" || ch === "/") {
-        var d = Math.abs((i + 1) - mid);
-        if (d < bestDist) { bestDist = d; best = i + 1; }
-      }
+      if (ch === "-" || ch === "/") cuts.push(i + 1);
     }
-    if (best < 0) best = Math.ceil(mid);          // no hyphen: split down the middle
-    return [sku.slice(0, best), sku.slice(best)];
+    if (cuts.length < n - 1) {              // not enough separators: even slices
+      var out = [], per = Math.ceil(sku.length / n), p = 0;
+      while (p < sku.length) { out.push(sku.substr(p, per)); p += per; }
+      return out;
+    }
+    var best = null;
+    function walk(from, chosen) {
+      if (chosen.length === n - 1) {
+        var parts = [], prev = 0;
+        chosen.concat([sku.length]).forEach(function (c) {
+          parts.push(sku.slice(prev, c)); prev = c;
+        });
+        var longest = 0;
+        parts.forEach(function (p) { if (p.length > longest) longest = p.length; });
+        if (!best || longest < best.longest) best = { longest: longest, parts: parts };
+        return;
+      }
+      for (var j = from; j < cuts.length; j++) walk(j + 1, chosen.concat([cuts[j]]));
+    }
+    walk(0, []);
+    return best ? best.parts : [sku];
   }
 
   function wrapMono(text, sizePt, widthPt) {
@@ -651,10 +672,17 @@ sku,product,price,qty
   // height instead. Only if the QR has shrunk to its floor and the stack still
   // will not fit does the type start to give way.
   var MIN_SKU_PT = 5, MIN_QR_MM = 12;
+  // With the QR on the left it owns width the text cannot have. Holding it
+  // at full size pushed a 32-character TU SKU down to 6.6pt. So the QR gives
+  // width back until the SKU reaches a comfortable size - and then stops,
+  // rather than shrinking all the way and wasting scan margin.
+  var TARGET_SKU_PT = 9;
 
   function autoFit(items, o, g) {
-    var notes = [], skuPt = o.skuPt, qrMm = o.qrMm;
-    if (!o.autofit || !items.length) return { skuPt: skuPt, qrMm: qrMm, notes: notes };
+    var notes = [], skuPt = o.skuPt, qrMm = o.qrMm, skuLines = 2;
+    if (!o.autofit || !items.length) {
+      return { skuPt: skuPt, qrMm: qrMm, skuLines: skuLines, notes: notes };
+    }
 
     var padded = g.labelH - 1.2;
     function widthPtFor(qr) {
@@ -671,34 +699,78 @@ sku,product,price,qty
       return t;
     }
 
-    // How wide is the longer half of the longest SKU in this run? That decides
-    // the type size, so the whole run stays uniform.
-    var longestHalf = 0;
-    items.forEach(function (it) {
-      splitSku(it.sku).forEach(function (l) {
-        if (l.length > longestHalf) longestHalf = l.length;
+    // Two lines or three? More lines means shorter parts, so the type can be
+    // larger - but the block gets taller and eventually stops fitting. Rather
+    // than fix the count, try both and keep whichever yields the bigger type.
+    // With the QR on the left the text column is narrow, so this matters: a
+    // 32-character TU SKU is 5pt over two lines and 7.3pt over three.
+    function longestPart(nLines, qr) {
+      var longest = 0;
+      items.forEach(function (it) {
+        splitInto(it.sku, nLines).forEach(function (p) {
+          if (p.length > longest) longest = p.length;
+        });
       });
-    });
-    if (longestHalf) {
-      var widthLimit = widthPtFor(qrMm) / (MONO_ADVANCE * longestHalf);
-      skuPt = Math.min(o.skuPt, Math.floor(widthLimit * 10) / 10);   // field is a ceiling
+      return longest;
+    }
+    function tryLines(nLines, qr) {
+      var lp = longestPart(nLines, qr);
+      if (!lp) return null;
+      var size = Math.min(o.skuPt, Math.floor((widthPtFor(qr) / (MONO_ADVANCE * lp)) * 10) / 10);
+      if (size < MIN_SKU_PT) return null;
+      var probe = { showName: o.showName, showPrice: o.showPrice, skuPt: size,
+                    pricePt: o.pricePt, skuLines: nLines };
+      var tallest = 0;
+      items.forEach(function (it) {
+        var b = textBlockPt(it, probe, widthPtFor(qr)) / PT;
+        if (b > tallest) tallest = b;
+      });
+      var needs = o.layout === "col" ? qr + 0.8 + tallest : Math.max(qr, tallest);
+      return { lines: nLines, size: size, tallest: tallest, fits: needs <= padded };
     }
 
-    if (o.layout === "col") {
-      var room = padded - 0.8 - tallestAt(skuPt, qrMm);
-      if (qrMm > room) qrMm = Math.max(MIN_QR_MM, Math.floor(room * 10) / 10);
-      var guard = 0;
-      while (skuPt > MIN_SKU_PT && guard++ < 80 &&
-             qrMm + 0.8 + tallestAt(skuPt, qrMm) > padded) {
-        skuPt = Math.round((skuPt - 0.1) * 10) / 10;
+    function bestAt(qr) {
+      var b = null;
+      [2, 3].forEach(function (nLines) {
+        var c = tryLines(nLines, qr);
+        if (c && c.fits && (!b || c.size > b.size)) b = c;
+      });
+      return b;
+    }
+
+    var choice = bestAt(qrMm);
+    // Side-by-side: trade QR width for type size, but only up to the target.
+    if (o.layout === "row") {
+      var guardQ = 0;
+      while (choice && choice.size < TARGET_SKU_PT && qrMm > MIN_QR_MM && guardQ++ < 40) {
+        var next = Math.max(MIN_QR_MM, Math.round((qrMm - 0.5) * 10) / 10);
+        var c2 = bestAt(next);
+        if (!c2 || c2.size <= choice.size) break;
+        qrMm = next; choice = c2;
       }
+    }
+    if (!choice) {
+      // nothing fits at this QR size, so let the QR give ground and retry
+      [2, 3].forEach(function (nLines) {
+        var c = tryLines(nLines, MIN_QR_MM);
+        if (c && (!choice || c.size > choice.size)) choice = c;
+      });
+      if (choice) {
+        var room = o.layout === "col" ? padded - 0.8 - choice.tallest : padded;
+        qrMm = Math.max(MIN_QR_MM, Math.floor(room * 10) / 10);
+      }
+    } else if (o.layout === "col") {
+      var room2 = padded - 0.8 - choice.tallest;
+      if (qrMm > room2) qrMm = Math.max(MIN_QR_MM, Math.floor(room2 * 10) / 10);
     } else if (qrMm > padded) {
       qrMm = Math.max(MIN_QR_MM, Math.floor(padded * 10) / 10);
     }
 
-    notes.push("Longest SKU half is " + longestHalf + " characters, so the SKU prints at " +
-               skuPt + " pt on two lines, with a " + qrMm + " mm QR.");
-    return { skuPt: skuPt, qrMm: qrMm, notes: notes };
+    if (choice) { skuPt = choice.size; skuLines = choice.lines; }
+
+    notes.push("Longest SKU part is " + longestPart(skuLines, qrMm) + " characters, so the SKU " +
+               "prints at " + skuPt + " pt over " + skuLines + " lines, with a " + qrMm + " mm QR.");
+    return { skuPt: skuPt, qrMm: qrMm, skuLines: skuLines, notes: notes };
   }
 
   // A QR only scans if its modules survive the print head. At 203 dpi a dot is
@@ -764,7 +836,7 @@ sku,product,price,qty
   function textBlockPt(it, o, widthPt) {
     var sizes = [];
     if (o.showName && it.product) sizes.push(o.skuPt - 1);
-    splitSku(it.sku).forEach(function () { sizes.push(o.skuPt); });
+    splitInto(it.sku, o.skuLines || 2).forEach(function () { sizes.push(o.skuPt); });
     if (o.showPrice && it.price !== "") {
       var p = formatPrice(it.price);
       sizes.push(Math.min(o.pricePt, widthPt / (MONO_ADVANCE * p.length)));
@@ -794,7 +866,7 @@ sku,product,price,qty
     if (o.showName && it.product) {
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
     }
-    splitSku(it.sku).forEach(function (t) {
+    splitInto(it.sku, o.skuLines || 2).forEach(function (t) {
       // Courier-Bold, same as the price. Its glyphs are the same width as
       // Courier, so the wrap and centring maths are unaffected.
       lines.push({ t: t, size: o.skuPt, font: "F2" });
@@ -929,6 +1001,7 @@ sku,product,price,qty
     var fitted = autoFit(got.items, got.opts, gm);
     got.opts.qrMm = fitted.qrMm;
     got.opts.skuPt = fitted.skuPt;
+    got.opts.skuLines = fitted.skuLines;
     var blob = buildPdf(got.items, got.opts);
     if (lastPdfUrl) URL.revokeObjectURL(lastPdfUrl);
     lastPdfUrl = URL.createObjectURL(blob);
@@ -937,10 +1010,9 @@ sku,product,price,qty
     $("pdfbox").hidden = false;
     $("pdfframe").src = lastPdfUrl;
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
-      " page(s) of " + gm.W + " x " + gm.H + " mm. Import into NiceLabel to print, or " +
-      "from Chrome set Scale to Actual size - never Fit to paper.";
-    showWarnings(fitted.notes
-      .concat(fitWarnings(got.items, got.opts, gm))
+      " page(s) of " + gm.W + " x " + gm.H + " mm. " + fitted.notes.join(" ") +
+      " Import into NiceLabel to print, or from Chrome set Scale to Actual size.";
+    showWarnings(fitWarnings(got.items, got.opts, gm)
       .concat(scanWarnings(got.items, got.opts, gm)));
     return lastPdfUrl;
   }
