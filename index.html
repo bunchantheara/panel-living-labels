@@ -182,6 +182,7 @@ sku,product,price,qty
     </div>
 
     <div class="row">
+      <label class="chk"><input type="checkbox" id="autofit" checked> Fit long SKUs automatically</label>
       <label class="chk"><input type="checkbox" id="showprice" checked> Show price</label>
       <label class="chk"><input type="checkbox" id="showname"> Show product name</label>
       <label class="chk"><input type="checkbox" id="useqty" checked> Use qty column for copies</label>
@@ -350,10 +351,14 @@ sku,product,price,qty
     // warnings
     var warns = parsed.problems.slice();
 
-    warns = warns.concat(fitWarnings(items, {
-      qrMm: qrMm, layout: layout, skuPt: skuPt, pricePt: pricePt,
-      showPrice: showPrice, showName: showName
-    }, g));
+    var opts = { qrMm: qrMm, layout: layout, skuPt: skuPt, pricePt: pricePt,
+                 showPrice: showPrice, showName: showName, ecl: ecl,
+                 autofit: $("autofit").checked };
+    var fitted = autoFit(items, opts, g);
+    qrMm = fitted.qrMm; skuPt = fitted.skuPt;
+    opts.qrMm = qrMm; opts.skuPt = skuPt;
+    warns = warns.concat(fitted.notes, fitWarnings(items, opts, g),
+                         scanWarnings(items, opts, g));
 
     var sheets = $("sheets");
     sheets.innerHTML = "";
@@ -608,6 +613,93 @@ sku,product,price,qty
     return lines;
   }
 
+  // Panel Living SKUs run 15-19 characters, but 2Sister and TU Cabinet use
+  // different schemes and TU's are much longer. One design covers all three by
+  // fitting itself to whatever it is handed.
+  //
+  // ORDER MATTERS. The obvious approach - shrink the type until the longest SKU
+  // sits on one line - drove a 35-character SKU down to 5.1 pt, which is
+  // unreadable and defeats the point of printing it. So readability comes
+  // first: the SKU keeps its size and simply WRAPS, and the QR gives up the
+  // height instead. Only if the QR has shrunk to its floor and the stack still
+  // will not fit does the type start to give way.
+  var MIN_SKU_PT = 5, MIN_QR_MM = 12;
+
+  function autoFit(items, o, g) {
+    var notes = [], skuPt = o.skuPt, qrMm = o.qrMm;
+    if (!o.autofit || !items.length) return { skuPt: skuPt, qrMm: qrMm, notes: notes };
+
+    var padded = g.labelH - 1.2;
+    function widthPtFor(qr) {
+      return pt(o.layout === "col" ? g.labelW - 2 : g.labelW - 2 - qr - 1);
+    }
+    function tallestAt(sku, qr) {
+      var probe = { showName: o.showName, showPrice: o.showPrice,
+                    skuPt: sku, pricePt: o.pricePt };
+      var t = 0;
+      items.forEach(function (it) {
+        var b = textBlockPt(it, probe, widthPtFor(qr)) / PT;
+        if (b > t) t = b;
+      });
+      return t;
+    }
+
+    if (o.layout === "col") {
+      // the QR yields first
+      var room = padded - 0.8 - tallestAt(skuPt, qrMm);
+      if (qrMm > room) qrMm = Math.max(MIN_QR_MM, Math.floor(room * 10) / 10);
+      // then, only if it still does not fit, the type
+      var guard = 0;
+      while (skuPt > MIN_SKU_PT && guard++ < 60 &&
+             qrMm + 0.8 + tallestAt(skuPt, qrMm) > padded) {
+        skuPt = Math.round((skuPt - 0.5) * 10) / 10;
+      }
+    } else if (qrMm > padded) {
+      qrMm = Math.max(MIN_QR_MM, Math.floor(padded * 10) / 10);
+    }
+
+    var lineCount = 0;
+    items.forEach(function (it) {
+      var c = wrapMono(it.sku, skuPt, widthPtFor(qrMm)).length;
+      if (c > lineCount) lineCount = c;
+    });
+    if (qrMm !== o.qrMm) {
+      notes.push("QR reduced to " + qrMm + " mm to keep the SKU readable at " +
+                 skuPt + " pt" + (lineCount > 1 ? " over " + lineCount + " lines" : "") + ".");
+    }
+    if (skuPt !== o.skuPt) {
+      notes.push("SKU reduced to " + skuPt + " pt - even at the smallest QR the text " +
+                 "would not fit otherwise. A taller label would hold it at full size.");
+    }
+    return { skuPt: skuPt, qrMm: qrMm, notes: notes };
+  }
+
+  // A QR only scans if its modules survive the print head. At 203 dpi a dot is
+  // 0.125 mm and the usual floor is 3 dots, so anything under 0.375 mm is
+  // asking for trouble - and a long SKU pushes the symbol to a higher version,
+  // which makes the modules smaller at the same physical size.
+  function scanWarnings(items, o, g) {
+    var out = [], worst = null;
+    items.forEach(function (it) {
+      if (!it.sku) return;
+      var q = qrcode(0, o.ecl);
+      q.addData(it.sku, ALNUM_OK.test(it.sku) ? "Alphanumeric" : "Byte");
+      q.make();
+      var mods = q.getModuleCount();
+      var mm = o.qrMm / (mods + 8);
+      if (!worst || mm < worst.mm) {
+        worst = { mm: mm, sku: it.sku, version: (mods - 17) / 4 };
+      }
+    });
+    if (worst && worst.mm < 0.375) {
+      out.push("At " + o.qrMm + " mm a " + worst.sku.length + "-character SKU needs QR version " +
+        worst.version + ", so each module is only " + worst.mm.toFixed(2) +
+        " mm (" + (worst.mm / 0.125).toFixed(1) + " printer dots). Under 3 dots it may not scan - " +
+        "use a bigger QR, a larger label, or error correction L.");
+    }
+    return out;
+  }
+
   // Does the content actually fit the label? Hard-coded once to a 20 mm label
   // and the side-by-side layout, which meant a taller label with the column
   // layout could push the price clean off the bottom with nothing said.
@@ -792,7 +884,8 @@ sku,product,price,qty
         ecl: $("ecl").value,
         showPrice: $("showprice").checked,
         showName: $("showname").checked,
-        layout: $("layout").value
+        layout: $("layout").value,
+        autofit: $("autofit").checked
       }
     };
   }
@@ -806,6 +899,9 @@ sku,product,price,qty
       $("errors").innerHTML = '<div class="err">Nothing to put in a PDF &mdash; paste at least one SKU.</div>';
       return;
     }
+    var fitted = autoFit(got.items, got.opts, gm);
+    got.opts.qrMm = fitted.qrMm;
+    got.opts.skuPt = fitted.skuPt;
     var blob = buildPdf(got.items, got.opts);
     if (lastPdfUrl) URL.revokeObjectURL(lastPdfUrl);
     lastPdfUrl = URL.createObjectURL(blob);
@@ -816,7 +912,9 @@ sku,product,price,qty
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
       " page(s) of " + gm.W + " x " + gm.H + " mm. Import into NiceLabel to print, or " +
       "from Chrome set Scale to Actual size - never Fit to paper.";
-    showWarnings(fitWarnings(got.items, got.opts, gm));
+    showWarnings(fitted.notes
+      .concat(fitWarnings(got.items, got.opts, gm))
+      .concat(scanWarnings(got.items, got.opts, gm)));
     return lastPdfUrl;
   }
 
