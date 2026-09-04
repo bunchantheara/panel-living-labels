@@ -48,10 +48,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   #pdfframe{width:100%;height:340px;border:1px solid var(--rule);background:#fff}
   #pdflink{font-size:13px;color:var(--accent)}
 
-  /* ---- the physical sheet: one row of the die-cut roll ---- */
-  .sheet{width:75mm;height:23mm;padding:0 1mm 3mm;display:flex;background:#fff;overflow:hidden}
+  /* ---- one die-cut label = one page. The roll is 2-across with 3mm
+     between columns and a 3mm row gap, but that is the label software's
+     job to lay out; we emit a single 35 x 20mm label per page. ---- */
+  .sheet{width:35mm;height:20mm;display:flex;background:#fff;overflow:hidden}
   .lab{width:35mm;height:20mm;padding:.6mm 1mm;display:flex;align-items:center;overflow:hidden}
-  .gut{width:3mm;height:20mm;flex:0 0 3mm}
   .qr{flex:0 0 auto;display:block}
   .qr svg{display:block;width:100%;height:100%}
   .txt{min-width:0;display:flex;flex-direction:column;gap:.4mm;overflow:hidden}
@@ -65,7 +66,6 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   @media screen{
     .sheets .sheet{outline:1px solid var(--rule)}
     .sheets .lab{outline:1px dashed #c2492f;outline-offset:-1px}
-    .sheets .gut{background:repeating-linear-gradient(45deg,transparent,transparent 2px,#e9ece9 2px,#e9ece9 4px)}
   }
 
   /* Launched from Books: the tab IS the PDF. Everything that belongs to the
@@ -85,14 +85,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   body.launched #pdfframe{flex:1 1 auto;height:auto;min-height:0;border-radius:4px}
 
   /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
-  .cal{display:block;position:relative;width:75mm;height:23mm;background:#fff;overflow:hidden}
+  .cal{display:block;position:relative;width:35mm;height:20mm;background:#fff;overflow:hidden}
   .cal .cbox{position:absolute;top:0;height:20mm;border:.2mm dashed #000}
   .cal .ctick{position:absolute;background:#000}
   .cal .cnum{position:absolute;font-family:var(--mono);font-size:4.5pt;color:#000;line-height:1}
   .cal .ccap{position:absolute;font-family:var(--mono);font-size:5pt;color:#000;line-height:1}
 
   @media print{
-    @page{size:75mm 23mm;margin:0}
+    @page{size:35mm 20mm;margin:0}
     body{background:#fff}
     .app{max-width:none;padding:0;gap:0}
     .noprint{display:none !important}
@@ -107,8 +107,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   <header class="noprint">
     <h1>Panel Living label printer</h1>
-    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is one 75&nbsp;&times;&nbsp;23&nbsp;mm row of the die-cut roll &mdash; two 35&nbsp;&times;&nbsp;20&nbsp;mm labels, 3&nbsp;mm apart, 1&nbsp;mm of liner each side &mdash; and the PDF carries that size itself. That fixes the page size, but <strong>it does not stop Chrome scaling it</strong>: in the print dialog set <strong>Scale = Actual size</strong> (never &ldquo;Fit to paper&rdquo;) and <strong>Paper size = 75 &times; 23 mm</strong>. Those two are still yours to get right.</p>
-    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. That route only comes out right if the driver has a 75&nbsp;&times;&nbsp;23&nbsp;mm paper size and Chrome is set to margins <em>None</em>, scale <em>100</em> &mdash; use the PDF unless you have a reason not to.</p>
+    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Each page is <strong>one 35&nbsp;&times;&nbsp;20&nbsp;mm label</strong>, at the true die-cut size. Laying two across the 75&nbsp;mm web, with the 3&nbsp;mm gutter and 3&nbsp;mm row gap, is your label software&rsquo;s job &mdash; it knows the media. <strong>The proven route is: download the PDF, import it into NiceLabel, print.</strong></p>
+    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. Printing straight from Chrome is the fragile path: it needs a 35&nbsp;&times;&nbsp;20&nbsp;mm paper size, margins <em>None</em> and <strong>Scale = Actual size</strong> (never &ldquo;Fit to paper&rdquo;, which stretches the page and throws every label off). Use NiceLabel unless you have a reason not to.</p>
   </header>
 
   <div class="launchbar noprint" id="launchbar" hidden>
@@ -145,10 +145,10 @@ sku,product,price,qty
           <option value="H">H — 30%</option>
         </select>
       </div>
-      <div class="ctl">Pairing
+      <div class="ctl">Copies
         <select id="pairing">
-          <option value="pack" selected>Different items per row (no waste)</option>
-          <option value="dup">Duplicate each item</option>
+          <option value="pack" selected>One label per item</option>
+          <option value="dup">Two labels per item</option>
         </select>
       </div>
     </div>
@@ -175,7 +175,7 @@ sku,product,price,qty
       <h2>PDF &mdash; print from here</h2>
       <a id="pdflink" target="_blank" rel="noopener">Open in a new tab</a>
     </div>
-    <p class="sub">Each page in this PDF is exactly 75 &times; 23 mm, so the PDF viewer prints
+    <p class="sub">Each page in this PDF is exactly 35 &times; 20 mm, so the PDF viewer prints
     it at true size on its own. Use the viewer's print button, and leave scaling on
     <strong>Actual size</strong> (not &ldquo;Fit&rdquo;).</p>
     <iframe id="pdfframe" title="Label PDF"></iframe>
@@ -323,15 +323,10 @@ sku,product,price,qty
     sheets.innerHTML = "";
     var made = 0, biggestVersion = 0;
 
-    for (var i = 0; i < items.length; i += 2) {
+    for (var i = 0; i < items.length; i++) {
       var sheet = document.createElement("div");
       sheet.className = "sheet";
       sheet.appendChild(labelEl(items[i]));
-      var gut = document.createElement("div");
-      gut.className = "gut";
-      sheet.appendChild(gut);
-      if (items[i + 1]) sheet.appendChild(labelEl(items[i + 1]));
-      else sheet.appendChild(blankEl());
       sheets.appendChild(sheet);
     }
 
@@ -350,7 +345,9 @@ sku,product,price,qty
 
       var txt = document.createElement("div");
       txt.className = "txt";
-      // 1mm narrower than the space left by the QR, so the longest price\n      // still clears the die-cut edge. Matches textWpt in the PDF path.\n      txt.style.width = "calc(33mm - " + qrMm + "mm - 1mm)";
+      // 1mm narrower than the space the QR leaves, so the longest price still
+      // clears the die-cut edge. Mirrors textWpt in the PDF path.
+      txt.style.width = "calc(33mm - " + qrMm + "mm - 1mm)";
 
       if (showName && it.product) {
         var nm = document.createElement("div");
@@ -377,12 +374,6 @@ sku,product,price,qty
       return lab;
     }
 
-    function blankEl() {
-      var d = document.createElement("div");
-      d.className = "lab";
-      return d;
-    }
-
     // The text column is only ~14 mm wide and .price never wraps, so a long
     // value would be silently clipped by the printer - and a clipped price on
     // a price tag is worse than a small one. Step the size down until it fits.
@@ -398,12 +389,9 @@ sku,product,price,qty
       if (pt < pricePt) shrunk++;
     });
 
-    var sheetCount = Math.ceil(items.length / 2);
-    var wasted = sheetCount * 2 - items.length;
-
     $("previewhead").hidden = false;
-    $("count").textContent = made + " labels · " + sheetCount + " rows" + (wasted ? " · " + wasted + " blank" : " · none wasted");
-    $("status").textContent = "Built " + made + " labels across " + sheetCount + " rows. QR version " + biggestVersion + ", " + ecl + " correction." +
+    $("count").textContent = made + " labels · " + made + " pages";
+    $("status").textContent = "Built " + made + " labels, one per 35 x 20 mm page. QR version " + biggestVersion + ", " + ecl + " correction." +
       (shrunk ? " Price shrunk to fit on " + shrunk + " of them." : "");
     $("print").disabled = false;
 
@@ -425,8 +413,7 @@ sku,product,price,qty
     sheets.innerHTML = "";
 
     // dashed boxes sit where the die-cut labels are: 1mm in, then 35-3-35
-    h.push('<div class="cbox" style="left:' + SIDE + 'mm;width:' + LABEL_W + 'mm"></div>');
-    h.push('<div class="cbox" style="left:' + (SIDE + LABEL_W + GUTTER) + 'mm;width:' + LABEL_W + 'mm"></div>');
+    h.push('<div class="cbox" style="left:0;width:' + LABEL_W + 'mm"></div>');
 
     for (var x = 0; x <= PAGE_W; x++) {
       var tall = x % 10 === 0 ? 3.6 : (x % 5 === 0 ? 2.4 : 1.2);
@@ -441,8 +428,7 @@ sku,product,price,qty
     }
     h.push('<div class="cnum" style="left:4.2mm;top:9mm">10</div>');
     h.push('<div class="cnum" style="left:4.2mm;top:16.5mm">20</div>');
-    h.push('<div class="ccap" style="left:41mm;top:9mm">' + PAGE_W + ' x ' + PAGE_H + ' mm @ 100%</div>');
-    h.push('<div class="ccap" style="left:41mm;top:13mm">1-35-3-35-1, band ' + LABEL_H + 'mm</div>');
+    h.push('<div class="ccap" style="left:12mm;top:14mm">' + PAGE_W + ' x ' + PAGE_H + ' mm @ 100%</div>');
 
     var sheet = document.createElement("div");
     sheet.className = "sheet cal";
@@ -451,7 +437,7 @@ sku,product,price,qty
 
     $("previewhead").hidden = false;
     $("count").textContent = "calibration row";
-    $("status").textContent = "Calibration row built. Print it, then measure: the 70 mm tick must sit at 70 mm and each dashed box must fill one label exactly.";
+    $("status").textContent = "Calibration label built. Print it, then measure: the 30 mm tick must sit at 30 mm and the dashed box must fill the die-cut exactly.";
     $("print").disabled = false;
     $("errors").innerHTML = "";
   }
@@ -460,21 +446,20 @@ sku,product,price,qty
   // The old zohoprintengine label printed reliably because it was a PDF whose
   // page box WAS the label: Chrome's paper size, margins and scale settings
   // could not throw it off. This rebuilds that property - same layout as the
-  // on-screen design, emitted as a PDF with a 75 x 23 mm MediaBox, one page
+  // on-screen design, emitted as a PDF with a 35 x 20 mm MediaBox, one page
   // per row. Written by hand rather than with a library so the page stays a
   // single self-contained file with no CDN.
-  // The die-cut roll, measured against a ruler 2 Sep 2026:
-  //   liner 75 mm wide, labels 35 x 20 mm, 3 mm between the two columns,
-  //   23 mm row pitch (20 mm label + 3 mm gap before the next row).
-  // That leaves 1 mm of liner either side: 1 + 35 + 3 + 35 + 1 = 75.
-  // The PDF page is the whole pitch, so the printer's gap sensor and the
-  // page boundary agree and nothing creeps from row to row.
-  var LABEL_W = 35, LABEL_H = 20, GUTTER = 3, SIDE = 1, ROW_GAP = 3;
-  var PAGE_W = SIDE * 2 + LABEL_W * 2 + GUTTER;   // 75 mm
-  var PAGE_H = LABEL_H + ROW_GAP;                 // 23 mm
-  // Printing starts just after the gap, so the label band is the TOP of the
-  // page; in PDF coordinates (origin bottom-left) that is ROW_GAP upwards.
-  var BAND_Y = ROW_GAP;
+  // The die-cut roll, measured against a ruler 2 Sep 2026: liner 75 mm wide,
+  // labels 35 x 20 mm, 3 mm between the two columns, 23 mm row pitch.
+  //
+  // The PDF emits ONE label per page at the true die-cut size. Laying two of
+  // them across the web, with the gutter and the row gap, is the label
+  // software's job (NiceLabel) - it knows the media and does it properly.
+  // Trying to bake the whole 75 x 23 mm row into the page fought that.
+  var LABEL_W = 35, LABEL_H = 20;
+  var GUTTER = 3, SIDE = 1, ROW_GAP = 3;          // the roll, for reference
+  var PAGE_W = LABEL_W, PAGE_H = LABEL_H;         // 35 x 20 mm
+  var BAND_Y = 0;                                 // the page IS the label
 
   var PT = 72 / 25.4;                    // mm -> PostScript points
   function pt(mm) { return Math.round(mm * PT * 1000) / 1000; }
@@ -574,10 +559,9 @@ sku,product,price,qty
     function put(n, body) { objects[n - 1] = body; }
 
     var kids = [];
-    for (var i = 0, page = 6; i < items.length; i += 2, page += 2) {
+    for (var i = 0, page = 6; i < items.length; i++, page += 2) {
       var rects = [], texts = [];
-      pdfLabel(items[i], SIDE, o, rects, texts);
-      pdfLabel(items[i + 1], SIDE + LABEL_W + GUTTER, o, rects, texts);
+      pdfLabel(items[i], 0, o, rects, texts);
       var content = "q\n1 1 1 rg\n0 0 " + W + " " + H + " re\nf\n0 0 0 rg\n" +
                     (rects.length ? rects.join("\n") + "\nf\n" : "") +
                     texts.join("\n") + "\nQ\n";
@@ -648,8 +632,8 @@ sku,product,price,qty
     $("pdfbox").hidden = false;
     $("pdfframe").src = lastPdfUrl;
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
-      " page(s) of 75 x 23 mm. Print from the PDF viewer - its page IS the label, " +
-      "Set Scale to Actual size - NOT Fit to paper - and Paper size to 75 x 23 mm.";
+      " page(s), one 35 x 20 mm label each. Import into NiceLabel to print, or " +
+      "from Chrome set Scale to Actual size - never Fit to paper.";
     $("errors").innerHTML = "";
     return lastPdfUrl;
   }
