@@ -62,7 +62,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .qr{flex:0 0 auto;display:block}
   .qr svg{display:block;width:100%;height:100%}
   .txt{min-width:0;display:flex;flex-direction:column;gap:.4mm;overflow:hidden}
-  .sku{font-family:var(--mono);font-weight:500;line-height:1.12;overflow-wrap:break-word;color:#000}
+  .sku{font-family:var(--mono);font-weight:700;line-height:1.12;overflow-wrap:break-word;color:#000}
   .price{font-family:var(--mono);font-weight:700;line-height:1.12;white-space:nowrap;color:#000}
   .name{font-family:var(--sans);line-height:1.12;color:#000;overflow:hidden}
 
@@ -350,28 +350,10 @@ sku,product,price,qty
     // warnings
     var warns = parsed.problems.slice();
 
-    // Does the content actually fit the label? The old check was hard-coded to
-    // a 20 mm label and the side-by-side layout, so on a taller label with the
-    // column layout an oversized QR pushed the price clean off the bottom with
-    // nothing said. Silence there costs a roll of stock.
-    var padded = g.labelH - 1.2;                     // 0.6 mm padding top+bottom
-    var maxQr = padded;
-    if (layout === "col") {
-      var tallest = 0;
-      items.forEach(function (it) {
-        var b = textBlockPt(it, { showName: showName, showPrice: showPrice,
-                                  skuPt: skuPt, pricePt: pricePt },
-                            pt(g.labelW - 2)) / PT;
-        if (b > tallest) tallest = b;
-      });
-      maxQr = padded - 0.8 - tallest;                // 0.8 mm QR-to-text gap
-    }
-    if (qrMm > maxQr) {
-      warns.push("QR is " + qrMm + " mm, but only " + (Math.floor(maxQr * 10) / 10) +
-        " mm fits on a " + g.labelW + " x " + g.labelH + " mm label with this layout" +
-        (layout === "col" ? " and the text beneath it" : "") +
-        ". Anything larger is drawn off the label.");
-    }
+    warns = warns.concat(fitWarnings(items, {
+      qrMm: qrMm, layout: layout, skuPt: skuPt, pricePt: pricePt,
+      showPrice: showPrice, showName: showName
+    }, g));
 
     var sheets = $("sheets");
     sheets.innerHTML = "";
@@ -467,10 +449,7 @@ sku,product,price,qty
       (shrunk ? " Price shrunk to fit on " + shrunk + " of them." : "");
     $("print").disabled = false;
 
-    if (warns.length) {
-      errBox.innerHTML = '<div class="err"><strong>Check these:</strong><ul>' +
-        warns.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") + "</ul></div>";
-    }
+    showWarnings(warns);
   }
 
   // Books prices this catalogue in USD, so the tag carries "$". Change CUR
@@ -629,6 +608,38 @@ sku,product,price,qty
     return lines;
   }
 
+  // Does the content actually fit the label? Hard-coded once to a 20 mm label
+  // and the side-by-side layout, which meant a taller label with the column
+  // layout could push the price clean off the bottom with nothing said.
+  // Silence there costs a roll of stock, so both the preview and the PDF run
+  // this - the PDF used to clear the warning the preview had just raised.
+  function fitWarnings(items, o, g) {
+    var out = [], padded = g.labelH - 1.2;   // 0.6 mm padding top and bottom
+    var maxQr = padded;
+    if (o.layout === "col") {
+      var tallest = 0;
+      items.forEach(function (it) {
+        var b = textBlockPt(it, o, pt(g.labelW - 2)) / PT;
+        if (b > tallest) tallest = b;
+      });
+      maxQr = padded - 0.8 - tallest;        // 0.8 mm QR-to-text gap
+    }
+    if (o.qrMm > maxQr) {
+      out.push("QR is " + o.qrMm + " mm, but only " + (Math.floor(maxQr * 10) / 10) +
+        " mm fits on a " + g.labelW + " x " + g.labelH + " mm label with this layout" +
+        (o.layout === "col" ? " and the text beneath it" : "") +
+        ". Anything larger is drawn off the label.");
+    }
+    return out;
+  }
+
+  function showWarnings(list) {
+    $("errors").innerHTML = list.length
+      ? '<div class="err"><strong>Check these:</strong><ul>' +
+        list.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") + "</ul></div>"
+      : "";
+  }
+
   // How tall the stacked text comes out, in points. Shared so the fit warning
   // in build() and the placement in pdfLabel() can never drift apart.
   function textBlockPt(it, o, widthPt) {
@@ -665,7 +676,9 @@ sku,product,price,qty
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
     }
     wrapMono(it.sku, o.skuPt, textWpt).forEach(function (t) {
-      lines.push({ t: t, size: o.skuPt, font: "F1" });
+      // Courier-Bold, same as the price. Its glyphs are the same width as
+      // Courier, so the wrap and centring maths are unaffected.
+      lines.push({ t: t, size: o.skuPt, font: "F2" });
     });
     if (o.showPrice && it.price !== "") {
       var p = formatPrice(it.price);
@@ -803,7 +816,7 @@ sku,product,price,qty
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
       " page(s) of " + gm.W + " x " + gm.H + " mm. Import into NiceLabel to print, or " +
       "from Chrome set Scale to Actual size - never Fit to paper.";
-    $("errors").innerHTML = "";
+    showWarnings(fitWarnings(got.items, got.opts, gm));
     return lastPdfUrl;
   }
 
