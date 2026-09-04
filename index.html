@@ -41,6 +41,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   body.launched .hideonlaunch{display:none}
   .err{background:var(--warn-bg);border-left:2px solid var(--warn);padding:9px 12px;font-size:13px}
   .err ul{margin:6px 0 0;padding-left:18px}
+  .rollrow .ctl input{width:78px}
+  .rollval{font-family:var(--mono);font-size:12px;color:var(--accent);display:block;padding:7px 0 0}
   .count{font-family:var(--mono);font-size:12px;color:var(--accent)}
   .previewhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
   .sheets{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
@@ -52,8 +54,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
      between columns and a 3mm row gap, but that is the label software's
      job to lay out; we emit a single 35 x 20mm label per page. ---- */
   .sheet{display:flex;background:#fff;overflow:hidden}   /* size set per build */
-  .gut{flex:0 0 auto;height:20mm}
-  .lab{width:35mm;height:20mm;padding:.6mm 1mm;display:flex;align-items:center;overflow:hidden}
+  .gut{flex:0 0 auto}   /* height set per build */
+  .lab{padding:.6mm 1mm;display:flex;align-items:center;overflow:hidden}  /* size set per build */
   .qr{flex:0 0 auto;display:block}
   .qr svg{display:block;width:100%;height:100%}
   .txt{min-width:0;display:flex;flex-direction:column;gap:.4mm;overflow:hidden}
@@ -87,7 +89,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   /* ---- calibration row: a printed ruler, to prove the output is 1:1 ---- */
   .cal{display:block;position:relative;width:35mm;height:20mm;background:#fff;overflow:hidden}
-  .cal .cbox{position:absolute;top:0;height:20mm;border:.2mm dashed #000}
+  .cal .cbox{position:absolute;top:0;border:.2mm dashed #000}  /* height set per build */
   .cal .ctick{position:absolute;background:#000}
   .cal .cnum{position:absolute;font-family:var(--mono);font-size:4.5pt;color:#000;line-height:1}
   .cal .ccap{position:absolute;font-family:var(--mono);font-size:5pt;color:#000;line-height:1}
@@ -148,8 +150,8 @@ sku,product,price,qty
       </div>
       <div class="ctl">Page
         <select id="pagemode">
-          <option value="row" selected>Whole row &mdash; 75 &times; 23 mm, 2 labels</option>
-          <option value="single">One label &mdash; 35 &times; 20 mm</option>
+          <option value="row" selected>Whole row &mdash; all labels across</option>
+          <option value="single">One label per page</option>
         </select>
       </div>
       <div class="ctl">Copies
@@ -158,6 +160,16 @@ sku,product,price,qty
           <option value="dup">Two labels per item</option>
         </select>
       </div>
+    </div>
+
+    <div class="row rollrow">
+      <div class="ctl">Label W (mm)<input id="labw" type="number" min="10" max="120" step="0.5" value="40"></div>
+      <div class="ctl">Label H (mm)<input id="labh" type="number" min="8" max="120" step="0.5" value="30"></div>
+      <div class="ctl">Across<input id="across" type="number" min="1" max="6" step="1" value="2"></div>
+      <div class="ctl">Gap across (mm)<input id="gapx" type="number" min="0" max="20" step="0.5" value="3"></div>
+      <div class="ctl">Gap down (mm)<input id="gapy" type="number" min="0" max="20" step="0.5" value="3"></div>
+      <div class="ctl">Liner edge (mm)<input id="side" type="number" min="0" max="20" step="0.5" value="1"></div>
+      <div class="ctl rollsum">Roll<span id="rollsum" class="rollval"></span></div>
     </div>
 
     <div class="row">
@@ -339,13 +351,15 @@ sku,product,price,qty
       sheet.style.width = g.W + "mm";
       sheet.style.height = g.H + "mm";
       sheet.style.padding = "0 " + g.side + "mm " + g.bandY + "mm";
-      sheet.appendChild(labelEl(items[i]));
-      if (g.perPage === 2) {
-        var gut = document.createElement("div");
-        gut.className = "gut";
-        gut.style.width = GUTTER + "mm";
-        sheet.appendChild(gut);
-        if (items[i + 1]) sheet.appendChild(labelEl(items[i + 1]));
+      for (var k = 0; k < g.perPage && items[i + k]; k++) {
+        if (k) {
+          var gut = document.createElement("div");
+          gut.className = "gut";
+          gut.style.width = g.gutter + "mm";
+          gut.style.height = g.labelH + "mm";
+          sheet.appendChild(gut);
+        }
+        sheet.appendChild(labelEl(items[i + k]));
       }
       sheets.appendChild(sheet);
     }
@@ -353,6 +367,8 @@ sku,product,price,qty
     function labelEl(it) {
       var lab = document.createElement("div");
       lab.className = "lab";
+      lab.style.width = g.labelW + "mm";
+      lab.style.height = g.labelH + "mm";
 
       var qwrap = document.createElement("div");
       qwrap.className = "qr";
@@ -367,7 +383,7 @@ sku,product,price,qty
       txt.className = "txt";
       // 1mm narrower than the space the QR leaves, so the longest price still
       // clears the die-cut edge. Mirrors textWpt in the PDF path.
-      txt.style.width = "calc(33mm - " + qrMm + "mm - 1mm)";
+      txt.style.width = (g.labelW - 2 - qrMm - 1) + "mm";
 
       if (showName && it.product) {
         var nm = document.createElement("div");
@@ -436,9 +452,9 @@ sku,product,price,qty
 
     // dashed boxes sit where the die-cut labels are: 1mm in, then 35-3-35
     var g = geom();
-    h.push('<div class="cbox" style="left:' + g.side + 'mm;width:' + LABEL_W + 'mm"></div>');
-    if (g.perPage === 2) {
-      h.push('<div class="cbox" style="left:' + (g.side + LABEL_W + GUTTER) + 'mm;width:' + LABEL_W + 'mm"></div>');
+    for (var b = 0; b < g.perPage; b++) {
+      h.push('<div class="cbox" style="left:' + (g.side + b * (g.labelW + g.gutter)) +
+             'mm;width:' + g.labelW + 'mm;height:' + g.labelH + 'mm"></div>');
     }
 
     for (var x = 0; x <= g.W; x++) {
@@ -486,14 +502,20 @@ sku,product,price,qty
   //   liner 75 mm wide  =  1 + 35 + 3 + 35 + 1
   //   labels 35 x 20 mm, 3 mm between the two columns
   //   row pitch 23 mm   =  20 mm label + 3 mm gap before the next row
-  var LABEL_W = 35, LABEL_H = 20, GUTTER = 3, SIDE = 1, ROW_GAP = 3;
+  // Everything about the roll is editable, because rolls change and the user
+  // should never have to wait for me to edit code. Measured 2 Sep 2026 the
+  // old roll was 35 x 20, 2 across, 3mm gaps, 1mm liner edge (75 x 23 row).
+  function num(id, dflt) {
+    var v = parseFloat(($(id) || {}).value);
+    return isFinite(v) && v >= 0 ? v : dflt;
+  }
 
-  // Two legitimate ways to page this, and which one is right depends on what
+  // Two legitimate ways to page a roll, and which is right depends on what
   // drives the printer - so it is a control, not a guess.
-  //   "row"    one page = one whole 75 x 23 mm row, two labels on it. Matches
-  //            the media exactly; this is what printed the good roll.
-  //   "single" one page = one 35 x 20 mm label. For label software that wants
-  //            artwork at die-cut size and does the multi-up itself.
+  //   "row"    one page = one whole row of the roll, all labels across it.
+  //            Matches the media exactly.
+  //   "single" one page = one label at die-cut size, for label software that
+  //            does the multi-up placement itself.
   // @page cannot be set from a style attribute, so keep one rule in sync.
   function applyPageSize() {
     var g = geom(), el = $("pagecss");
@@ -506,15 +528,29 @@ sku,product,price,qty
   }
 
   function geom() {
+    var w = num("labw", 40), h = num("labh", 30);
+    var across = Math.max(1, Math.round(num("across", 2)));
+    var gx = num("gapx", 3), gy = num("gapy", 3), side = num("side", 1);
+    var base = { labelW: w, labelH: h, gutter: gx, across: across };
     if (($("pagemode") || {}).value === "single") {
-      return { W: LABEL_W, H: LABEL_H, side: 0, bandY: 0, perPage: 1, mode: "single" };
+      base.W = w; base.H = h; base.side = 0; base.bandY = 0;
+      base.perPage = 1; base.mode = "single";
+    } else {
+      base.W = side * 2 + w * across + gx * (across - 1);
+      base.H = h + gy;
+      base.side = side; base.bandY = gy;   // label band sits at the top
+      base.perPage = across; base.mode = "row";
     }
-    return {
-      W: SIDE * 2 + LABEL_W * 2 + GUTTER,   // 75
-      H: LABEL_H + ROW_GAP,                 // 23
-      side: SIDE, bandY: ROW_GAP,           // label band sits at the top
-      perPage: 2, mode: "row"
-    };
+    return base;
+  }
+
+  // Show the operator what the roll adds up to, so a wrong number is obvious
+  // before anything is printed.
+  function showRoll() {
+    var g = geom(), w = num("labw", 40), across = Math.max(1, Math.round(num("across", 2)));
+    var gx = num("gapx", 3), gy = num("gapy", 3), side = num("side", 1);
+    $("rollsum").textContent = "liner " + (side * 2 + w * across + gx * (across - 1)) +
+      " mm · pitch " + (num("labh", 30) + gy) + " mm · page " + g.W + " x " + g.H + " mm";
   }
 
   var PT = 72 / 25.4;                    // mm -> PostScript points
@@ -560,14 +596,14 @@ sku,product,price,qty
   }
 
   // One label's operators, placed xoMm from the left edge of the row.
-  function pdfLabel(it, xoMm, bandY, o, rects, texts) {
+  function pdfLabel(it, xoMm, g, o, rects, texts) {
     if (!it) return;
     var q = qrcode(0, o.ecl);
     q.addData(it.sku, ALNUM_OK.test(it.sku) ? "Alphanumeric" : "Byte");
     q.make();
     var n = q.getModuleCount();
     var cell = o.qrMm / (n + 8);         // 4-module quiet zone each side
-    var qrX = xoMm + 1, qrY = bandY + (LABEL_H - o.qrMm) / 2;
+    var qrX = xoMm + 1, qrY = g.bandY + (g.labelH - o.qrMm) / 2;
 
     for (var r = 0; r < n; r++) {
       var c = 0;
@@ -582,7 +618,7 @@ sku,product,price,qty
     }
 
     var textXmm = xoMm + 1 + o.qrMm;      // butts the QR box; its quiet zone is the gap
-    var textWpt = pt(LABEL_W - 2 - o.qrMm - 1);   // padding both sides, then 1mm spare right
+    var textWpt = pt(g.labelW - 2 - o.qrMm - 1);  // padding both sides, then 1mm spare right
     var lines = [];
     if (o.showName && it.product) {
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
@@ -598,7 +634,7 @@ sku,product,price,qty
 
     var gap = pt(0.4), block = 0;
     lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
-    var y = pt(bandY) + (pt(LABEL_H) + block) / 2;    // top of the centred stack
+    var y = pt(g.bandY) + (pt(g.labelH) + block) / 2; // top of the centred stack
     lines.forEach(function (L, i) {
       if (i) y -= gap;
       var baseline = Math.round((y - L.size * 0.81) * 1000) / 1000;
@@ -618,9 +654,8 @@ sku,product,price,qty
     var kids = [];
     for (var i = 0, page = 6; i < items.length; i += g.perPage, page += 2) {
       var rects = [], texts = [];
-      pdfLabel(items[i], g.side, g.bandY, o, rects, texts);
-      if (g.perPage === 2 && items[i + 1]) {
-        pdfLabel(items[i + 1], g.side + LABEL_W + GUTTER, g.bandY, o, rects, texts);
+      for (var k = 0; k < g.perPage && items[i + k]; k++) {
+        pdfLabel(items[i + k], g.side + k * (g.labelW + g.gutter), g, o, rects, texts);
       }
       var content = "q\n1 1 1 rg\n0 0 " + W + " " + H + " re\nf\n0 0 0 rg\n" +
                     (rects.length ? rects.join("\n") + "\nf\n" : "") +
@@ -789,12 +824,17 @@ sku,product,price,qty
   $("calib").addEventListener("click", function () { applyPageSize(); buildCalibration(); });
   $("makepdf").addEventListener("click", makePdf);
   // Changing the page shape invalidates whatever is on screen, so rebuild.
-  $("pagemode").addEventListener("change", function () {
-    applyPageSize();
-    if (!$("print").disabled) build();
-    if (!$("pdfbox").hidden) makePdf();
+  // Any roll or page change invalidates what is on screen, so redo it.
+  ["pagemode", "labw", "labh", "across", "gapx", "gapy", "side"].forEach(function (id) {
+    $(id).addEventListener("change", function () {
+      applyPageSize();
+      showRoll();
+      if (!$("print").disabled) build();
+      if (!$("pdfbox").hidden) makePdf();
+    });
   });
   applyPageSize();
+  showRoll();
   $("print").addEventListener("click", function () { window.print(); });
 
   // Changing only the "#" part of an address does NOT reload the page, so if the
