@@ -140,7 +140,7 @@ sku,product,price,qty
     </label>
 
     <div class="row">
-      <div class="ctl">QR size (mm)<input id="qrmm" type="number" min="8" max="19" step="0.5" value="18"></div>
+      <div class="ctl">QR size (mm)<input id="qrmm" type="number" min="8" max="60" step="0.5" value="20"></div>
       <div class="ctl">SKU size (pt)<input id="skupt" type="number" min="4" max="12" step="0.5" value="7.5"></div>
       <div class="ctl">Price size (pt)<input id="pricept" type="number" min="4" max="14" step="0.5" value="10"></div>
       <div class="ctl">Error correction
@@ -153,8 +153,8 @@ sku,product,price,qty
       </div>
       <div class="ctl">Layout
         <select id="layout">
-          <option value="row" selected>QR left, text right</option>
-          <option value="col">QR on top, text below</option>
+          <option value="row">QR left, text right</option>
+          <option value="col" selected>QR on top, text below</option>
         </select>
       </div>
       <div class="ctl">Page
