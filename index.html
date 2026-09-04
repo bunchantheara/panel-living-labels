@@ -118,8 +118,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
   <header class="noprint">
     <h1>Panel Living label printer</h1>
-    <p class="sub">Paste items below, then use <strong>Make PDF</strong> and print from the PDF viewer. Your roll is <strong>75&nbsp;mm wide</strong>: two 35&nbsp;&times;&nbsp;20&nbsp;mm labels, 3&nbsp;mm apart, 1&nbsp;mm of liner each side, on a 23&nbsp;mm row pitch. The <strong>Page</strong> control decides how that becomes a PDF page &mdash; a whole 75&nbsp;&times;&nbsp;23&nbsp;mm row (matches the media, and is what printed the good roll) or one 35&nbsp;&times;&nbsp;20&nbsp;mm label at a time, if your label software prefers to do the multi-up itself. <strong>The proven route is: download the PDF, import it into NiceLabel, print.</strong></p>
-    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead. Printing straight from Chrome is the fragile path: it needs a paper size matching the <strong>Page</strong> control above, margins <em>None</em> and <strong>Scale = Actual size</strong> (never &ldquo;Fit to paper&rdquo;, which stretches the page and throws every label off). Use NiceLabel unless you have a reason not to.</p>
+    <p class="sub">Paste items below, then press <strong>Make PDF</strong>. Set your roll in the fields below &mdash; the summary beside them shows what they add up to, and the PDF page follows. The <strong>Page</strong> control chooses whether a page is one label or a whole row of them.</p>
+    <p class="sub"><strong>The PDF already carries its exact size, so any PDF reader can print it &mdash; you do not need NiceLabel or BarTender.</strong> The one setting that still matters everywhere is scale: <strong>Actual size</strong>, never &ldquo;Fit to paper&rdquo;, which stretches the page and throws every label off. Acrobat Reader (<em>Page Sizing &amp; Handling &rarr; Actual size</em>), SumatraPDF and Chrome (<em>Scale &rarr; Actual size</em>) all work, and so does NiceLabel if you already have it. Your printer driver also needs a paper size matching the page.</p>
+    <p class="sub">The <strong>Print</strong> button below prints the HTML preview instead of the PDF. It needs the same settings and has no advantage &mdash; use the PDF.</p>
   </header>
 
   <div class="launchbar noprint" id="launchbar" hidden>
@@ -551,7 +552,7 @@ sku,product,price,qty
   //
   // The PDF emits ONE label per page at the true die-cut size. Laying two of
   // them across the web, with the gutter and the row gap, is the label
-  // software's job (NiceLabel) - it knows the media and does it properly.
+  // label software's job - it knows the media and does it properly.
   // Trying to bake the whole 75 x 23 mm row into the page fought that.
   // The die-cut roll, measured against a ruler 2 Sep 2026:
   //   liner 75 mm wide  =  1 + 35 + 3 + 35 + 1
@@ -1092,7 +1093,7 @@ sku,product,price,qty
     $("pdfframe").src = lastPdfUrl;
     $("status").textContent = "PDF built: " + got.items.length + " labels over " + rows +
       " page(s) of " + gm.W + " x " + gm.H + " mm. " + fitted.notes.join(" ") +
-      " Import into NiceLabel to print, or from Chrome set Scale to Actual size.";
+      " Print from any PDF reader with scale set to Actual size.";
     showWarnings(fitWarnings(got.items, got.opts, gm)
       .concat(scanWarnings(got.items, got.opts, gm)));
     return lastPdfUrl;
