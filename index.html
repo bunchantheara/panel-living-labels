@@ -57,6 +57,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
   .gut{flex:0 0 auto}   /* height set per build */
   .lab{padding:.6mm 1mm;display:flex;align-items:center;overflow:hidden}  /* size set per build */
   .lab.col{flex-direction:column;justify-content:center;gap:.8mm}
+  .lab.split{flex-direction:column;justify-content:center;gap:.8mm}
+  .lab.split .toprow{display:flex;align-items:center;gap:1mm;width:100%}
+  .lab.split .pricecell{flex:1 1 auto;display:flex;justify-content:center;min-width:0}
+  .lab.split .skurow{width:100%;align-items:center;text-align:center}
+  .lab.split .sku{text-align:center}
   .lab.col .txt{align-items:center;text-align:center}
   .lab.col .sku,.lab.col .price,.lab.col .name{text-align:center}
   .qr{flex:0 0 auto;display:block}
@@ -153,7 +158,8 @@ sku,product,price,qty
       </div>
       <div class="ctl">Layout
         <select id="layout">
-          <option value="row" selected>QR left, text right</option>
+          <option value="split" selected>QR left, price right, SKU below</option>
+          <option value="row">QR left, text right</option>
           <option value="col">QR on top, text below</option>
         </select>
       </div>
@@ -385,12 +391,7 @@ sku,product,price,qty
       sheets.appendChild(sheet);
     }
 
-    function labelEl(it) {
-      var lab = document.createElement("div");
-      lab.className = "lab" + (layout === "col" ? " col" : "");
-      lab.style.width = g.labelW + "mm";
-      lab.style.height = g.labelH + "mm";
-
+    function qrBox(it) {
       var qwrap = document.createElement("div");
       qwrap.className = "qr";
       qwrap.style.width = qrMm + "mm";
@@ -398,8 +399,54 @@ sku,product,price,qty
       var res = qrSvg(it.sku, qrMm, ecl);
       qwrap.innerHTML = res.svg;
       if (res.version > biggestVersion) biggestVersion = res.version;
-      lab.appendChild(qwrap);
+      return qwrap;
+    }
+    function skuLinesEl(it) {
+      var frag = document.createDocumentFragment();
+      splitInto(it.sku, skuLines).forEach(function (part) {
+        var sk = document.createElement("div");
+        sk.className = "sku";
+        sk.style.fontSize = skuPt + "pt";
+        sk.textContent = part;
+        frag.appendChild(sk);
+      });
+      return frag;
+    }
+    function priceEl(it) {
+      var pr = document.createElement("div");
+      pr.className = "price";
+      pr.style.fontSize = pricePt + "pt";
+      pr.textContent = formatPrice(it.price);
+      return pr;
+    }
 
+    function labelEl(it) {
+      var lab = document.createElement("div");
+      lab.className = "lab" + (layout === "col" ? " col" : layout === "split" ? " split" : "");
+      lab.style.width = g.labelW + "mm";
+      lab.style.height = g.labelH + "mm";
+
+      if (layout === "split") {
+        // QR and price share the top band; the SKU runs the full width below.
+        var top = document.createElement("div");
+        top.className = "toprow";
+        top.appendChild(qrBox(it));
+        if (showPrice && it.price !== "") {
+          var pw = document.createElement("div");
+          pw.className = "pricecell";
+          pw.appendChild(priceEl(it));
+          top.appendChild(pw);
+        }
+        lab.appendChild(top);
+        var below = document.createElement("div");
+        below.className = "txt skurow";
+        below.appendChild(skuLinesEl(it));
+        lab.appendChild(below);
+        made++;
+        return lab;
+      }
+
+      lab.appendChild(qrBox(it));
       var txt = document.createElement("div");
       txt.className = "txt";
       // 1mm narrower than the space the QR leaves, so the longest price still
@@ -413,21 +460,8 @@ sku,product,price,qty
         nm.textContent = it.product;
         txt.appendChild(nm);
       }
-      splitInto(it.sku, skuLines).forEach(function (part) {
-        var sk = document.createElement("div");
-        sk.className = "sku";
-        sk.style.fontSize = skuPt + "pt";
-        sk.textContent = part;
-        txt.appendChild(sk);
-      });
-
-      if (showPrice && it.price !== "") {
-        var pr = document.createElement("div");
-        pr.className = "price";
-        pr.style.fontSize = pricePt + "pt";
-        pr.textContent = formatPrice(it.price);
-        txt.appendChild(pr);
-      }
+      txt.appendChild(skuLinesEl(it));
+      if (showPrice && it.price !== "") txt.appendChild(priceEl(it));
       lab.appendChild(txt);
       made++;
       return lab;
@@ -686,7 +720,9 @@ sku,product,price,qty
 
     var padded = g.labelH - 1.2;
     function widthPtFor(qr) {
-      return pt(o.layout === "col" ? g.labelW - 2 : g.labelW - 2 - qr - 1);
+      // split and col give the SKU the whole label width; row shares it with the QR
+      return pt((o.layout === "col" || o.layout === "split")
+        ? g.labelW - 2 : g.labelW - 2 - qr - 1);
     }
     function tallestAt(sku, qr) {
       var probe = { showName: o.showName, showPrice: o.showPrice,
@@ -719,39 +755,54 @@ sku,product,price,qty
       var size = Math.min(o.skuPt, Math.floor((widthPtFor(qr) / (MONO_ADVANCE * lp)) * 10) / 10);
       if (size < MIN_SKU_PT) return null;
       var probe = { showName: o.showName, showPrice: o.showPrice, skuPt: size,
-                    pricePt: o.pricePt, skuLines: nLines };
+                    pricePt: o.pricePt, skuLines: nLines, layout: o.layout };
       var tallest = 0;
       items.forEach(function (it) {
         var b = textBlockPt(it, probe, widthPtFor(qr)) / PT;
         if (b > tallest) tallest = b;
       });
-      var needs = o.layout === "col" ? qr + 0.8 + tallest : Math.max(qr, tallest);
+      var needs = (o.layout === "col" || o.layout === "split")
+        ? qr + 0.8 + tallest : Math.max(qr, tallest);
       return { lines: nLines, size: size, tallest: tallest, fits: needs <= padded };
     }
 
     function bestAt(qr) {
       var b = null;
-      [2, 3].forEach(function (nLines) {
+      lineChoices.forEach(function (nLines) {
         var c = tryLines(nLines, qr);
         if (c && c.fits && (!b || c.size > b.size)) b = c;
       });
       return b;
     }
 
+    // The SKU spans the full width in the split layout, so one line often
+    // suffices; three would waste the height the QR wants. Two or three suits
+    // the narrow column beside the QR.
+    var lineChoices = o.layout === "split" ? [1, 2] : [2, 3];
     var choice = bestAt(qrMm);
-    // Side-by-side: trade QR width for type size, but only up to the target.
-    if (o.layout === "row") {
-      var guardQ = 0;
-      while (choice && choice.size < TARGET_SKU_PT && qrMm > MIN_QR_MM && guardQ++ < 40) {
-        var next = Math.max(MIN_QR_MM, Math.round((qrMm - 0.5) * 10) / 10);
-        var c2 = bestAt(next);
-        if (!c2 || c2.size <= choice.size) break;
-        qrMm = next; choice = c2;
+    // Trade QR size for type size, but only up to the target - beyond that we
+    // would be spending scan margin for nothing. Applies wherever the QR and
+    // the text compete: side by side for width, split for height.
+    if (o.layout === "row" || o.layout === "split") {
+      // Scan down to the floor rather than stopping at the first step that
+      // does not help. The gain is not monotonic: shrinking the QR only pays
+      // off once it frees enough room for an extra SKU line, which can be
+      // several steps away - stopping early left a 32-character TU SKU at
+      // 5.6pt when 11.2pt was available a few tenths of a millimetre lower.
+      var qTry = qrMm, bestQ = qrMm, bestC = choice, guardQ = 0;
+      while (qTry > MIN_QR_MM && guardQ++ < 80 &&
+             (!bestC || bestC.size < TARGET_SKU_PT)) {
+        qTry = Math.max(MIN_QR_MM, Math.round((qTry - 0.5) * 10) / 10);
+        var c2 = bestAt(qTry);
+        if (c2 && (!bestC || c2.size > bestC.size)) { bestC = c2; bestQ = qTry; }
+      }
+      if (bestC && bestC.size > (choice ? choice.size : 0)) {
+        choice = bestC; qrMm = bestQ;
       }
     }
     if (!choice) {
       // nothing fits at this QR size, so let the QR give ground and retry
-      [2, 3].forEach(function (nLines) {
+      lineChoices.forEach(function (nLines) {
         var c = tryLines(nLines, MIN_QR_MM);
         if (c && (!choice || c.size > choice.size)) choice = c;
       });
@@ -759,7 +810,7 @@ sku,product,price,qty
         var room = o.layout === "col" ? padded - 0.8 - choice.tallest : padded;
         qrMm = Math.max(MIN_QR_MM, Math.floor(room * 10) / 10);
       }
-    } else if (o.layout === "col") {
+    } else if (o.layout === "col" || o.layout === "split") {
       var room2 = padded - 0.8 - choice.tallest;
       if (qrMm > room2) qrMm = Math.max(MIN_QR_MM, Math.floor(room2 * 10) / 10);
     } else if (qrMm > padded) {
@@ -837,7 +888,9 @@ sku,product,price,qty
     var sizes = [];
     if (o.showName && it.product) sizes.push(o.skuPt - 1);
     splitInto(it.sku, o.skuLines || 2).forEach(function () { sizes.push(o.skuPt); });
-    if (o.showPrice && it.price !== "") {
+    // In the split layout the price sits beside the QR, not under the SKU,
+    // so it takes no height in this block.
+    if (o.showPrice && it.price !== "" && o.layout !== "split") {
       var p = formatPrice(it.price);
       sizes.push(Math.min(o.pricePt, widthPt / (MONO_ADVANCE * p.length)));
     }
@@ -854,14 +907,15 @@ sku,product,price,qty
     q.make();
     var n = q.getModuleCount();
     var cell = o.qrMm / (n + 8);         // 4-module quiet zone each side
-    var col = o.layout === "col";
+    var mode = o.layout;                    // "split" | "row" | "col"
+    var col = mode === "col", split = mode === "split";
 
-    // Text is measured before anything is placed, because in the column
-    // layout the QR position depends on how tall the text block turns out.
-    // Across the full label width a SKU usually fits on one line, which is
-    // why the column layout suits a taller label so much better.
-    var textWpt = col ? pt(g.labelW - 2)
-                      : pt(g.labelW - 2 - o.qrMm - 1);
+    // Text is measured before anything is placed, because the QR position
+    // depends on how tall the text turns out. In split and column the SKU has
+    // the whole label width, which is what lets it print so much larger than
+    // it can in the narrow column beside the QR.
+    var textWpt = (col || split) ? pt(g.labelW - 2)
+                                 : pt(g.labelW - 2 - o.qrMm - 1);
     var lines = [];
     if (o.showName && it.product) {
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
@@ -871,15 +925,15 @@ sku,product,price,qty
       // Courier, so the wrap and centring maths are unaffected.
       lines.push({ t: t, size: o.skuPt, font: "F2" });
     });
-    if (o.showPrice && it.price !== "") {
-      var p = formatPrice(it.price);
-      var size = Math.min(o.pricePt, textWpt / (MONO_ADVANCE * p.length));
-      lines.push({ t: p, size: size, font: "F2" });
+    if (o.showPrice && it.price !== "" && !split) {
+      var p0 = formatPrice(it.price);
+      var size0 = Math.min(o.pricePt, textWpt / (MONO_ADVANCE * p0.length));
+      lines.push({ t: p0, size: size0, font: "F2" });
     }
     var gap = pt(0.4), block = 0;
     lines.forEach(function (L, i) { block += L.size * 1.12; if (i) block += gap; });
 
-    var qrX, qrY, textTopPt;
+    var qrX, qrY, textTopPt, priceRun = null;
     if (col) {
       var qrGap = 0.8;                                  // mm between QR and text
       var stack = o.qrMm + qrGap + block / PT;          // whole content, in mm
@@ -887,6 +941,26 @@ sku,product,price,qty
       qrX = xoMm + (g.labelW - o.qrMm) / 2;             // centred across
       qrY = topMm - o.qrMm;
       textTopPt = pt(topMm - o.qrMm - qrGap);
+    } else if (split) {
+      // QR left with the price beside it, SKU across the full width beneath.
+      var gapY = 0.8, gapX = 1;
+      var stackS = o.qrMm + gapY + block / PT;
+      var topS = g.bandY + (g.labelH + stackS) / 2;
+      qrX = xoMm + 1;
+      qrY = topS - o.qrMm;
+      textTopPt = pt(topS - o.qrMm - gapY);
+      if (o.showPrice && it.price !== "") {
+        var p = formatPrice(it.price);
+        var availPt = pt(g.labelW - 2 - o.qrMm - gapX);
+        var psize = Math.min(o.pricePt, availPt / (MONO_ADVANCE * p.length));
+        var pw = p.length * MONO_ADVANCE * psize;
+        priceRun = {
+          t: p, size: psize, font: "F2",
+          x: pt(xoMm + 1 + o.qrMm + gapX) + (availPt - pw) / 2,   // centred in its space
+          // sits on the QR band\x27s midline; 0.35em lifts the cap height onto it
+          baseline: pt(qrY + o.qrMm / 2) - psize * 0.35
+        };
+      }
     } else {
       qrX = xoMm + 1;
       qrY = g.bandY + (g.labelH - o.qrMm) / 2;
@@ -911,13 +985,20 @@ sku,product,price,qty
       var baseline = Math.round((y - L.size * 0.81) * 1000) / 1000;
       // Courier is fixed-pitch, so centring is exact arithmetic.
       var wPt = L.t.length * MONO_ADVANCE * L.size;
-      var xPt = col ? pt(xoMm) + (pt(g.labelW) - wPt) / 2
-                    : pt(xoMm + 1 + o.qrMm);
+      var xPt = (col || split) ? pt(xoMm) + (pt(g.labelW) - wPt) / 2
+                               : pt(xoMm + 1 + o.qrMm);
       texts.push("BT /" + L.font + " " + (Math.round(L.size * 1000) / 1000) +
                  " Tf " + (Math.round(xPt * 1000) / 1000) + " " + baseline +
                  " Td (" + pdfStr(L.t) + ") Tj ET");
       y -= L.size * 1.12;
     });
+
+    if (priceRun) {
+      texts.push("BT /" + priceRun.font + " " + (Math.round(priceRun.size * 1000) / 1000) +
+                 " Tf " + (Math.round(priceRun.x * 1000) / 1000) + " " +
+                 (Math.round(priceRun.baseline * 1000) / 1000) +
+                 " Td (" + pdfStr(priceRun.t) + ") Tj ET");
+    }
   }
 
   function buildPdf(items, o) {
