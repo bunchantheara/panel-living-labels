@@ -603,9 +603,12 @@ sku,product,price,qty
   // balanced and the SKU still reads in its natural groups.
   function splitSku(sku) {
     if (!sku) return [""];
+    // Break after a hyphen OR a slash: Panel Living uses hyphens, 2Sister and
+    // TU Cabinet use both (2S-DAG-EAR-00007/10, BLU-WAH-RCH-D36-RSM/ROT-00017/30).
     var mid = sku.length / 2, best = -1, bestDist = 1e9;
     for (var i = 0; i < sku.length - 1; i++) {
-      if (sku.charAt(i) === "-") {
+      var ch = sku.charAt(i);
+      if (ch === "-" || ch === "/") {
         var d = Math.abs((i + 1) - mid);
         if (d < bestDist) { bestDist = d; best = i + 1; }
       }
