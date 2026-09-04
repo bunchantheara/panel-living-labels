@@ -141,7 +141,7 @@ sku,product,price,qty
 
     <div class="row">
       <div class="ctl">QR size (mm)<input id="qrmm" type="number" min="8" max="60" step="0.5" value="20"></div>
-      <div class="ctl">SKU size (pt)<input id="skupt" type="number" min="4" max="12" step="0.5" value="7.5"></div>
+      <div class="ctl">SKU max (pt)<input id="skupt" type="number" min="4" max="24" step="0.5" value="14"></div>
       <div class="ctl">Price size (pt)<input id="pricept" type="number" min="4" max="14" step="0.5" value="10"></div>
       <div class="ctl">Error correction
         <select id="ecl">
@@ -413,11 +413,13 @@ sku,product,price,qty
         nm.textContent = it.product;
         txt.appendChild(nm);
       }
-      var sk = document.createElement("div");
-      sk.className = "sku";
-      sk.style.fontSize = skuPt + "pt";
-      sk.textContent = it.sku;
-      txt.appendChild(sk);
+      splitSku(it.sku).forEach(function (part) {
+        var sk = document.createElement("div");
+        sk.className = "sku";
+        sk.style.fontSize = skuPt + "pt";
+        sk.textContent = part;
+        txt.appendChild(sk);
+      });
 
       if (showPrice && it.price !== "") {
         var pr = document.createElement("div");
@@ -590,6 +592,28 @@ sku,product,price,qty
     return out;
   }
 
+  // Every SKU prints on exactly TWO lines, whatever its length. Panel Living
+  // and 2Sister are 15-19 characters, TU Cabinet reaches 25-30; splitting them
+  // all in half means each line is short, so the type can be much larger than
+  // it could be on one line - and the size then falls out of the character
+  // count on its own. A short SKU gets big type, a long one gets smaller type,
+  // which is exactly the behaviour asked for.
+  //
+  // The break goes on the hyphen nearest the midpoint, so the halves stay
+  // balanced and the SKU still reads in its natural groups.
+  function splitSku(sku) {
+    if (!sku) return [""];
+    var mid = sku.length / 2, best = -1, bestDist = 1e9;
+    for (var i = 0; i < sku.length - 1; i++) {
+      if (sku.charAt(i) === "-") {
+        var d = Math.abs((i + 1) - mid);
+        if (d < bestDist) { bestDist = d; best = i + 1; }
+      }
+    }
+    if (best < 0) best = Math.ceil(mid);          // no hyphen: split down the middle
+    return [sku.slice(0, best), sku.slice(best)];
+  }
+
   function wrapMono(text, sizePt, widthPt) {
     var per = Math.max(1, Math.floor(widthPt / (MONO_ADVANCE * sizePt)));
     if (text.length <= per) return [text];
@@ -644,33 +668,33 @@ sku,product,price,qty
       return t;
     }
 
+    // How wide is the longer half of the longest SKU in this run? That decides
+    // the type size, so the whole run stays uniform.
+    var longestHalf = 0;
+    items.forEach(function (it) {
+      splitSku(it.sku).forEach(function (l) {
+        if (l.length > longestHalf) longestHalf = l.length;
+      });
+    });
+    if (longestHalf) {
+      var widthLimit = widthPtFor(qrMm) / (MONO_ADVANCE * longestHalf);
+      skuPt = Math.min(o.skuPt, Math.floor(widthLimit * 10) / 10);   // field is a ceiling
+    }
+
     if (o.layout === "col") {
-      // the QR yields first
       var room = padded - 0.8 - tallestAt(skuPt, qrMm);
       if (qrMm > room) qrMm = Math.max(MIN_QR_MM, Math.floor(room * 10) / 10);
-      // then, only if it still does not fit, the type
       var guard = 0;
-      while (skuPt > MIN_SKU_PT && guard++ < 60 &&
+      while (skuPt > MIN_SKU_PT && guard++ < 80 &&
              qrMm + 0.8 + tallestAt(skuPt, qrMm) > padded) {
-        skuPt = Math.round((skuPt - 0.5) * 10) / 10;
+        skuPt = Math.round((skuPt - 0.1) * 10) / 10;
       }
     } else if (qrMm > padded) {
       qrMm = Math.max(MIN_QR_MM, Math.floor(padded * 10) / 10);
     }
 
-    var lineCount = 0;
-    items.forEach(function (it) {
-      var c = wrapMono(it.sku, skuPt, widthPtFor(qrMm)).length;
-      if (c > lineCount) lineCount = c;
-    });
-    if (qrMm !== o.qrMm) {
-      notes.push("QR reduced to " + qrMm + " mm to keep the SKU readable at " +
-                 skuPt + " pt" + (lineCount > 1 ? " over " + lineCount + " lines" : "") + ".");
-    }
-    if (skuPt !== o.skuPt) {
-      notes.push("SKU reduced to " + skuPt + " pt - even at the smallest QR the text " +
-                 "would not fit otherwise. A taller label would hold it at full size.");
-    }
+    notes.push("Longest SKU half is " + longestHalf + " characters, so the SKU prints at " +
+               skuPt + " pt on two lines, with a " + qrMm + " mm QR.");
     return { skuPt: skuPt, qrMm: qrMm, notes: notes };
   }
 
@@ -737,7 +761,7 @@ sku,product,price,qty
   function textBlockPt(it, o, widthPt) {
     var sizes = [];
     if (o.showName && it.product) sizes.push(o.skuPt - 1);
-    wrapMono(it.sku, o.skuPt, widthPt).forEach(function () { sizes.push(o.skuPt); });
+    splitSku(it.sku).forEach(function () { sizes.push(o.skuPt); });
     if (o.showPrice && it.price !== "") {
       var p = formatPrice(it.price);
       sizes.push(Math.min(o.pricePt, widthPt / (MONO_ADVANCE * p.length)));
@@ -767,7 +791,7 @@ sku,product,price,qty
     if (o.showName && it.product) {
       lines.push({ t: it.product, size: o.skuPt - 1, font: "F3" });
     }
-    wrapMono(it.sku, o.skuPt, textWpt).forEach(function (t) {
+    splitSku(it.sku).forEach(function (t) {
       // Courier-Bold, same as the price. Its glyphs are the same width as
       // Courier, so the wrap and centring maths are unaffected.
       lines.push({ t: t, size: o.skuPt, font: "F2" });
